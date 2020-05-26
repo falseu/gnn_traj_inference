@@ -1,0 +1,2 @@
+old <- Sys.getenv("PATH")
+Sys.setenv(PATH = paste(old, "C:\\rtools40\\usr\\bin", sep=";"))
