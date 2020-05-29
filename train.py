@@ -44,11 +44,12 @@ def test(loader):
     correct = np.array(correct)
     predict = np.array(predict)
     return sqrt(mean_squared_error(correct, predict))
-    
+
 
 if __name__ == "__main__":
 
-    dataset = RnaVeloDataset(root='result_files/')
+    dataset = RnaVeloDataset(root='data/')
+    print(dataset)
     print(dataset[1].edge_index)
     batch_size = 128
     data = dataset[0]
@@ -62,10 +63,12 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(params=model.parameters(), lr=1e-3)
 
     best_val_perf = test_perf = 0
-    for epoch in range(1, 251):
+    for epoch in range(1, 51):
         train_loss = train()
         train_acc = test(train_loader)
         val_acc = test(val_loader)
         test_acc = test(test_loader)
         log = 'Epoch: {:03d}, Loss: {:.4f}, Train: {:.4f}, Val: {:.4f}, Test: {:.4f}'
         print(log.format(epoch, train_loss, train_acc, val_acc, test_acc))
+
+    

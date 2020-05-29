@@ -8,10 +8,11 @@ import networkx as nx
 import scvelo as scv
 
 from scipy.sparse import csr_matrix
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import kneighbors_graph
+
 
 
 class RnaVeloDataset(InMemoryDataset):
@@ -33,18 +34,21 @@ class RnaVeloDataset(InMemoryDataset):
         pass
 
     def process(self):
-        backbones = ["bifurcating"]
+        backbones = ["linear_simple"]
+        seed = [2]
         trans_rate = [1, 5, 10]
-        split_rate = [10, 1, 0.1]
-        num_cells = [1000, 1500, 2000]
-        root = 'result_files/'
+        split_rate = [0.1, 0.5, 1, 5, 10]
+        num_cells = [210, 220, 230, 240, 250, 260, 270, 280, 290, 300]
+        root = 'data/'
 
-        combined = [(bb, tr, sr, nc) for bb in backbones for tr in trans_rate for sr in split_rate for nc in num_cells]
+        combined = [(bb, sd, tr, sr, nc) for bb in backbones for sd in seed for tr in trans_rate for sr in split_rate for nc in num_cells]
         data_list = []
 
         for item in combined:
-            bb, tr, sr, nc = item
-            path = root + bb + "_" + str(tr) + "_" + str(sr) + "_" + str(nc)
+            if item == ("linear_simple", 4, 1, 10, 250): continue
+            bb, sd, tr, sr, nc = item
+            path = root + bb + "_" + str(sd) + "_" + str(tr) + "_" + str(sr) + "_" + str(nc)
+            print(path)
             df = pd.read_csv(path + "_unspliced.csv")
 
             df = df.drop(df.columns[[0]], axis=1)
@@ -82,12 +86,16 @@ class RnaVeloDataset(InMemoryDataset):
             X_pca_pre = pca.transform(X_pre)
             velo_pca = X_pca_pre - X_pca_ori
 
-            directed_conn = kneighbors_graph(X_pca_ori, n_neighbors=35, mode='connectivity', include_self=False).toarray()
+            directed_conn = kneighbors_graph(X_pca_ori, n_neighbors=10, mode='connectivity', include_self=False).toarray()
             conn = directed_conn + directed_conn.T
             conn[conn.nonzero()[0],conn.nonzero()[1]] = 1
 
             x = torch.FloatTensor(X_pca_ori.copy())
-            y = torch.FloatTensor(X_obs['sim_time'])
+
+            y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
+            scaler = MinMaxScaler((0, 2))
+            scaler.fit(y)
+            y = torch.FloatTensor(scaler.transform(y).reshape(-1))
 
             edge_index = np.array(np.where(conn == 1))
             edge_index = torch.LongTensor(edge_index)
@@ -100,6 +108,7 @@ class RnaVeloDataset(InMemoryDataset):
                 penalty = np.matmul(diff, velo_pca[i,:, None])/\
                 (np.linalg.norm(velo_pca[i,:], ord=2) * distance)
                 penalty = np.nan_to_num(penalty, 0)
+                # penalty = np.exp(distance.min() - distance)
                 weights = (np.exp(penalty)/np.sum(np.exp(penalty))).squeeze()
                 edge_attr = np.append(edge_attr, weights)
             edge_attr = torch.FloatTensor(edge_attr)
