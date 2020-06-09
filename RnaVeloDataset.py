@@ -8,7 +8,7 @@ import networkx as nx
 import scvelo as scv
 
 from scipy.sparse import csr_matrix
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import kneighbors_graph
@@ -34,23 +34,44 @@ class RnaVeloDataset(InMemoryDataset):
         pass
 
     def process(self):
-        backbones = ["linear_simple"]
+        # backbones = ["linear_simple"]
         seed = [2]
         trans_rate = [1, 5, 10]
         split_rate = [0.1, 0.5, 1, 5, 10]
         num_cells = [210, 220, 230, 240, 250, 260, 270, 280, 290, 300]
+
+        # seed = [6]
+        # trans_rate = [1]
+        # split_rate = [1]
+        # num_cells=[3000]
+
         root = 'data/'
 
-        combined = [(bb, sd, tr, sr, nc) for bb in backbones for sd in seed for tr in trans_rate for sr in split_rate for nc in num_cells]
+        linear_simple = [("linear_simple", sd, tr, sr, nc) for sd in seed for tr in trans_rate for sr in split_rate for nc in num_cells]
+        linear_simple_10 = [("linear_simple", 2, 5, sr, nc) for sr in [1, 5] for nc in [220, 240, 260, 280, 300]]
+        bif_batch1 = [("bifur1", tr, 1, 1, nc) for tr in [3, 5] for nc in [100, 150, 200, 250, 300]]
+        bif_batch2 = [("bifur2", tr, 1, 1, nc) for tr in [3, 5, 10] for nc in [100, 150, 200, 250, 300]]
+        bif_3 = [("bif3", 2, tr, sr, nc) for tr in [1, 5, 10] for sr in [0.1, 1, 5] for nc in [200, 400, 600, 800, 1000]]
+        
+        combined = bif_batch1 + linear_simple_10
         data_list = []
 
         for item in combined:
-            if item == ("linear_simple", 4, 1, 10, 250): continue
-            bb, sd, tr, sr, nc = item
-            path = root + bb + "_" + str(sd) + "_" + str(tr) + "_" + str(sr) + "_" + str(nc)
+            if item[0] == "linear_simple":
+                bb, sd, tr, sr, nc = item
+                path = root + bb + "_" + str(sd) + "_" + str(tr) + "_" + str(sr) + "_" + str(nc)
+            if item[0] == "bifur1":
+                bb, tr, sr, dg, nc = item
+                path = root + "bif_batch1/bifurcating_" + str(tr) + "_1_1_" + str(nc)
+            if item[0] == 'bifur2':
+                bb, tr, sr, dg, nc = item
+                path = root + "bif_batch2/bifurcating_" + str(tr) + "_1_1_" + str(nc)
+            if item[0] == 'bif3':
+                bb, sd, tr, sr, nc = item
+                path = root + "bifurcating" + "_" + str(sd) + "_" + str(tr) + "_" + str(sr) + "_" + str(nc)
             print(path)
-            df = pd.read_csv(path + "_unspliced.csv")
 
+            df = pd.read_csv(path + "_unspliced.csv")
             df = df.drop(df.columns[[0]], axis=1)
             X_unspliced = df.to_numpy()
 
@@ -74,46 +95,46 @@ class RnaVeloDataset(InMemoryDataset):
 
             # dimension reduction
             X_concat = np.concatenate((X_spliced,X_unspliced),axis=1)
-            pca = PCA(n_components=30, svd_solver='arpack')
-            pipeline = Pipeline([('scaling', StandardScaler()), ('pca', PCA(n_components=30, svd_solver='arpack'))])
-            features_pca = pipeline.fit_transform(X_concat)
+            pca = PCA(n_components=10, svd_solver='arpack')
+            pipeline = Pipeline([('normalization', Normalizer()), ('pca', PCA(n_components=10, svd_solver='arpack'))])
 
             # predict gene expression data
             velo_matrix = adata.layers["velocity"].copy()
             X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
 
-            X_pca_ori = pca.fit_transform(X_spliced)
-            X_pca_pre = pca.transform(X_pre)
+            X_pca_ori = pipeline.fit_transform(X_spliced)
+            X_pca_pre = pipeline.transform(X_pre)
             velo_pca = X_pca_pre - X_pca_ori
 
-            directed_conn = kneighbors_graph(X_pca_ori, n_neighbors=10, mode='connectivity', include_self=False).toarray()
+            directed_conn = kneighbors_graph(X_pca_ori, n_neighbors=5, mode='connectivity', include_self=False).toarray()
             conn = directed_conn + directed_conn.T
             conn[conn.nonzero()[0],conn.nonzero()[1]] = 1
-
+            
             x = torch.FloatTensor(X_pca_ori.copy())
 
             y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
-            scaler = MinMaxScaler((0, 2))
+            scaler = MinMaxScaler((0, 1))
             scaler.fit(y)
-            y = torch.FloatTensor(scaler.transform(y).reshape(-1))
+            y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
 
             edge_index = np.array(np.where(conn == 1))
             edge_index = torch.LongTensor(edge_index)
 
-            edge_attr = np.array([])
-            for i in range(conn.shape[0]):
-                indices = conn[i,:].nonzero()[0]
-                diff = X_pca_ori[indices,:] - X_pca_ori[i,:]
-                distance = np.linalg.norm(diff, axis=1, ord=2)[:,None]
-                penalty = np.matmul(diff, velo_pca[i,:, None])/\
-                (np.linalg.norm(velo_pca[i,:], ord=2) * distance)
-                penalty = np.nan_to_num(penalty, 0)
-                # penalty = np.exp(distance.min() - distance)
-                weights = (np.exp(penalty)/np.sum(np.exp(penalty))).squeeze()
-                edge_attr = np.append(edge_attr, weights)
-            edge_attr = torch.FloatTensor(edge_attr)
+            # edge_attr = np.array([])
+            # for i in range(conn.shape[0]):
+            #     indices = conn[i,:].nonzero()[0]
+            #     diff = X_pca_ori[indices,:] - X_pca_ori[i,:]
+            #     distance = np.linalg.norm(diff, axis=1, ord=2)[:,None]
+            #     penalty = np.matmul(diff, velo_pca[i,:, None])/\
+            #     (np.linalg.norm(velo_pca[i,:], ord=2) * distance)
+            #     penalty = np.nan_to_num(penalty, 0)
+            #     # penalty = np.exp(distance.min() - distance)
+            #     weights = (np.exp(penalty)/np.sum(np.exp(penalty))).squeeze()
+            #     edge_attr = np.append(edge_attr, weights)
+            # edge_attr = torch.FloatTensor(edge_attr)
             
-            data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y)
+            data = Data(x=x, edge_index=edge_index, y=y)
+            data.adata = adata
             print(data)
             data_list.append(data)
 
