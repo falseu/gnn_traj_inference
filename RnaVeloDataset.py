@@ -4,7 +4,6 @@ from torch_geometric.data import InMemoryDataset
 from torch_geometric.data import Data
 import pandas as pd
 import anndata
-import networkx as nx
 import scvelo as scv
 
 from scipy.sparse import csr_matrix
@@ -34,41 +33,24 @@ class RnaVeloDataset(InMemoryDataset):
         pass
 
     def process(self):
-        # backbones = ["linear_simple"]
-        seed = [2]
-        trans_rate = [1, 5, 10]
-        split_rate = [0.1, 0.5, 1, 5, 10]
-        num_cells = [210, 220, 230, 240, 250, 260, 270, 280, 290, 300]
+        backbones = ["bifurcating", "binary_tree", "cycle", "linear", "trifurcating"]
+        seed = [1]
+        trans_rate = [3, 5, 10]
+        num_cells = [100, 150, 200, 250, 300]
 
         # seed = [6]
         # trans_rate = [1]
         # split_rate = [1]
         # num_cells=[3000]
 
-        root = 'data/'
-
-        linear_simple = [("linear_simple", sd, tr, sr, nc) for sd in seed for tr in trans_rate for sr in split_rate for nc in num_cells]
-        linear_simple_10 = [("linear_simple", 2, 5, sr, nc) for sr in [1, 5] for nc in [220, 240, 260, 280, 300]]
-        bif_batch1 = [("bifur1", tr, 1, 1, nc) for tr in [3, 5] for nc in [100, 150, 200, 250, 300]]
-        bif_batch2 = [("bifur2", tr, 1, 1, nc) for tr in [3, 5, 10] for nc in [100, 150, 200, 250, 300]]
-        bif_3 = [("bif3", 2, tr, sr, nc) for tr in [1, 5, 10] for sr in [0.1, 1, 5] for nc in [200, 400, 600, 800, 1000]]
+        root = '5_backbone/'
         
-        combined = bif_batch1 + linear_simple_10
+        combined = [(bb, tr, nc) for bb in backbones for tr in trans_rate for nc in num_cells]
         data_list = []
 
         for item in combined:
-            if item[0] == "linear_simple":
-                bb, sd, tr, sr, nc = item
-                path = root + bb + "_" + str(sd) + "_" + str(tr) + "_" + str(sr) + "_" + str(nc)
-            if item[0] == "bifur1":
-                bb, tr, sr, dg, nc = item
-                path = root + "bif_batch1/bifurcating_" + str(tr) + "_1_1_" + str(nc)
-            if item[0] == 'bifur2':
-                bb, tr, sr, dg, nc = item
-                path = root + "bif_batch2/bifurcating_" + str(tr) + "_1_1_" + str(nc)
-            if item[0] == 'bif3':
-                bb, sd, tr, sr, nc = item
-                path = root + "bifurcating" + "_" + str(sd) + "_" + str(tr) + "_" + str(sr) + "_" + str(nc)
+            bb, tr, nc = item
+            path = root + bb + "_" + str(tr) + "_1_1_" + str(nc)
             print(path)
 
             df = pd.read_csv(path + "_unspliced.csv")
@@ -90,21 +72,21 @@ class RnaVeloDataset(InMemoryDataset):
                                 spliced = csr_matrix(X_spliced)
                             ))
 
-            # compute velocity
-            scv.tl.velocity_graph(adata)
-
             # dimension reduction
             X_concat = np.concatenate((X_spliced,X_unspliced),axis=1)
             pca = PCA(n_components=10, svd_solver='arpack')
             pipeline = Pipeline([('normalization', Normalizer()), ('pca', PCA(n_components=10, svd_solver='arpack'))])
+            X_pca_ori = pipeline.fit_transform(X_spliced)
+
+            # compute velocity
+            # scv.tl.velocity_graph(adata)
 
             # predict gene expression data
-            velo_matrix = adata.layers["velocity"].copy()
-            X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
+            # velo_matrix = adata.layers["velocity"].copy()
+            # X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
 
-            X_pca_ori = pipeline.fit_transform(X_spliced)
-            X_pca_pre = pipeline.transform(X_pre)
-            velo_pca = X_pca_pre - X_pca_ori
+            # X_pca_pre = pipeline.transform(X_pre)
+            # velo_pca = X_pca_pre - X_pca_ori
 
             directed_conn = kneighbors_graph(X_pca_ori, n_neighbors=5, mode='connectivity', include_self=False).toarray()
             conn = directed_conn + directed_conn.T
@@ -112,10 +94,14 @@ class RnaVeloDataset(InMemoryDataset):
             
             x = torch.FloatTensor(X_pca_ori.copy())
 
-            y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
-            scaler = MinMaxScaler((0, 1))
-            scaler.fit(y)
-            y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
+            # Simulation time label
+            # y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
+            # scaler = MinMaxScaler((0, 1))
+            # scaler.fit(y)
+            # y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
+
+            # Graph type label
+            y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
 
             edge_index = np.array(np.where(conn == 1))
             edge_index = torch.LongTensor(edge_index)

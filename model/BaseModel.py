@@ -31,28 +31,34 @@ class BaseModel(torch.nn.Module):
 
         self.conv1 = GCNConv(in_channels, 32)
         self.conv2 = GCNConv(32, 32)
-        self.conv3 = GCNConv(32, 32)
-        self.conv4 = GCNConv(32, 32)
-        # self.conv3 = GCNConv(64, 64)
-
 
         self.lin1 = nn.Linear(32, 32)
-        # self.lin2 = nn.Linear(32, 32)
-        # self.lin3 = nn.Linear(32, 32)
-        self.lin4 = nn.Linear(32, 1)
+        self.lin2 = nn.Linear(32, 1)
 
     def forward(self, data):
         x, edge_index = data.x.float(), data.edge_index
 
         x = F.relu(self.conv1(x, edge_index))
         x = F.relu(self.conv2(x, edge_index))
-        # x = F.relu(self.conv3(x, edge_index))
-        # x = F.relu(self.conv4(x, edge_index))
-        # x, edge_index, _, batch, _, _ = self.pool2(x, edge_index, None, batch)
-        # x = self.conv2(x, edge_index)
         x = F.relu(self.lin1(x))
-        # x = F.relu(self.lin2(x))
-        # x = F.relu(self.lin3(x))
-        # x = self.lin1(x)
-        x = self.lin4(x)
+        x = self.lin2(x)
+        return x
+
+class BaseModelClassification(torch.nn.Module):
+    def __init__(self, in_channels, num_classes):
+        super(BaseModelClassification, self).__init__()
+
+        self.conv1 = GCNConv(in_channels, in_channels)
+        self.conv2 = GCNConv(in_channels, in_channels)
+
+        self.lin1 = nn.Linear(in_channels, in_channels)
+        self.lin2 = nn.Linear(in_channels, num_classes)
+    
+    def forward(self, data, *input, **kwargs):
+        x, edge_index = data.x.float(), data.edge_index
+
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
+        x = F.relu(self.lin1(x))
+        x = self.lin2(x)
         return x
