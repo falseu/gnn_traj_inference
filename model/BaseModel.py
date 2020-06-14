@@ -4,9 +4,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 import numpy as np
+from model.mylayer import GraphConvolution
 
 class BaseModel(torch.nn.Module):
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, device):
         super(BaseModel, self).__init__()
         self.mlp1 = nn.Sequential(
             nn.Linear(in_channels, 16),
@@ -25,34 +26,50 @@ class BaseModel(torch.nn.Module):
             nn.Linear(16, 16)
         )
 
-        # self.conv1 = GINConv(self.mlp1)
-        # self.conv2 = GINConv(self.mlp2)
-        # self.conv3 = GINConv(self.mlp3)
+        # self.conv1 = GCNConv(in_channels, 32)
+        # self.conv2 = GCNConv(32, 32)
 
-        self.conv1 = GCNConv(in_channels, 32)
-        self.conv2 = GCNConv(32, 32)
-        self.conv3 = GCNConv(32, 32)
-        self.conv4 = GCNConv(32, 32)
-        # self.conv3 = GCNConv(64, 64)
+        self.conv1 = GraphConvolution(in_channels, 2*in_channels)
+        self.conv2 = GraphConvolution(2*in_channels, 2*in_channels)
 
+        self.lin1 = nn.Linear(2*in_channels, 2*in_channels)
+        self.lin2 = nn.Linear(2*in_channels, 1)
 
-        self.lin1 = nn.Linear(32, 32)
-        # self.lin2 = nn.Linear(32, 32)
-        # self.lin3 = nn.Linear(32, 32)
-        self.lin4 = nn.Linear(32, 1)
+        self.device = device
 
     def forward(self, data):
+        x = data.x.float()
+        adj = torch.FloatTensor(data.adj).view(x.shape[0], x.shape[0])
+        # adj np.inf denote disconnected
+        # adj = adj + 1s
+        adj = F.sigmoid(adj)
+        # adj = torch.where(torch.isnan(adj), torch.zeros_like(adj), adj)
+        adj[torch.isnan(adj)] = 0
+        adj = adj * 4
+
+        adj = adj.to(self.device)
+
+        x = self.conv1(x, adj, self.device)
+        x = self.conv2(x, adj, self.device)
+        x = F.relu(self.lin1(x))
+        x = self.lin2(x)
+        return x
+
+class BaseModelClassification(torch.nn.Module):
+    def __init__(self, in_channels, num_classes):
+        super(BaseModelClassification, self).__init__()
+
+        self.conv1 = GCNConv(in_channels, in_channels)
+        self.conv2 = GCNConv(in_channels, in_channels)
+
+        self.lin1 = nn.Linear(in_channels, in_channels)
+        self.lin2 = nn.Linear(in_channels, num_classes)
+    
+    def forward(self, data, *input, **kwargs):
         x, edge_index = data.x.float(), data.edge_index
 
         x = F.relu(self.conv1(x, edge_index))
         x = F.relu(self.conv2(x, edge_index))
-        # x = F.relu(self.conv3(x, edge_index))
-        # x = F.relu(self.conv4(x, edge_index))
-        # x, edge_index, _, batch, _, _ = self.pool2(x, edge_index, None, batch)
-        # x = self.conv2(x, edge_index)
         x = F.relu(self.lin1(x))
-        # x = F.relu(self.lin2(x))
-        # x = F.relu(self.lin3(x))
-        # x = self.lin1(x)
-        x = self.lin4(x)
+        x = self.lin2(x)
         return x

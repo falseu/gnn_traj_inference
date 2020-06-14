@@ -4,7 +4,6 @@ from torch_geometric.data import InMemoryDataset
 from torch_geometric.data import Data
 import pandas as pd
 import anndata
-import networkx as nx
 import scvelo as scv
 
 from scipy.sparse import csr_matrix
@@ -34,41 +33,20 @@ class RnaVeloDataset(InMemoryDataset):
         pass
 
     def process(self):
-        # backbones = ["linear_simple"]
-        seed = [2]
-        trans_rate = [1, 5, 10]
-        split_rate = [0.1, 0.5, 1, 5, 10]
-        num_cells = [210, 220, 230, 240, 250, 260, 270, 280, 290, 300]
-
-        # seed = [6]
-        # trans_rate = [1]
-        # split_rate = [1]
-        # num_cells=[3000]
-
-        root = 'data/'
-
-        linear_simple = [("linear_simple", sd, tr, sr, nc) for sd in seed for tr in trans_rate for sr in split_rate for nc in num_cells]
-        linear_simple_10 = [("linear_simple", 2, 5, sr, nc) for sr in [1, 5] for nc in [220, 240, 260, 280, 300]]
-        bif_batch1 = [("bifur1", tr, 1, 1, nc) for tr in [3, 5] for nc in [100, 150, 200, 250, 300]]
-        bif_batch2 = [("bifur2", tr, 1, 1, nc) for tr in [3, 5, 10] for nc in [100, 150, 200, 250, 300]]
-        bif_3 = [("bif3", 2, tr, sr, nc) for tr in [1, 5, 10] for sr in [0.1, 1, 5] for nc in [200, 400, 600, 800, 1000]]
+        backbones = ["bifurcating", "binary_tree", "linear", "trifurcating"]
+        seed = [1]
         
-        combined = bif_batch1 + linear_simple_10
+        trans_rate = [3, 5, 10]
+        num_cells = [100, 150, 200, 250, 300]
+
+        root = '5_backbone/'
+        
+        combined = [(bb, tr, nc) for bb in backbones for tr in trans_rate for nc in num_cells]
         data_list = []
 
         for item in combined:
-            if item[0] == "linear_simple":
-                bb, sd, tr, sr, nc = item
-                path = root + bb + "_" + str(sd) + "_" + str(tr) + "_" + str(sr) + "_" + str(nc)
-            if item[0] == "bifur1":
-                bb, tr, sr, dg, nc = item
-                path = root + "bif_batch1/bifurcating_" + str(tr) + "_1_1_" + str(nc)
-            if item[0] == 'bifur2':
-                bb, tr, sr, dg, nc = item
-                path = root + "bif_batch2/bifurcating_" + str(tr) + "_1_1_" + str(nc)
-            if item[0] == 'bif3':
-                bb, sd, tr, sr, nc = item
-                path = root + "bifurcating" + "_" + str(sd) + "_" + str(tr) + "_" + str(sr) + "_" + str(nc)
+            bb, tr, nc = item
+            path = root + bb + "_" + str(tr) + "_1_1_" + str(nc)
             print(path)
 
             df = pd.read_csv(path + "_unspliced.csv")
@@ -90,19 +68,19 @@ class RnaVeloDataset(InMemoryDataset):
                                 spliced = csr_matrix(X_spliced)
                             ))
 
-            # compute velocity
-            scv.tl.velocity_graph(adata)
-
             # dimension reduction
             X_concat = np.concatenate((X_spliced,X_unspliced),axis=1)
             pca = PCA(n_components=10, svd_solver='arpack')
             pipeline = Pipeline([('normalization', Normalizer()), ('pca', PCA(n_components=10, svd_solver='arpack'))])
+            X_pca_ori = pipeline.fit_transform(X_spliced)
+
+            # compute velocity
+            scv.tl.velocity_graph(adata)
 
             # predict gene expression data
             velo_matrix = adata.layers["velocity"].copy()
             X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
 
-            X_pca_ori = pipeline.fit_transform(X_spliced)
             X_pca_pre = pipeline.transform(X_pre)
             velo_pca = X_pca_pre - X_pca_ori
 
@@ -112,30 +90,47 @@ class RnaVeloDataset(InMemoryDataset):
             
             x = torch.FloatTensor(X_pca_ori.copy())
 
+            # Simulation time label
             y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
             scaler = MinMaxScaler((0, 1))
             scaler.fit(y)
             y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
 
+            # Graph type label
+            # y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
+
             edge_index = np.array(np.where(conn == 1))
             edge_index = torch.LongTensor(edge_index)
 
-            # edge_attr = np.array([])
-            # for i in range(conn.shape[0]):
-            #     indices = conn[i,:].nonzero()[0]
-            #     diff = X_pca_ori[indices,:] - X_pca_ori[i,:]
-            #     distance = np.linalg.norm(diff, axis=1, ord=2)[:,None]
-            #     penalty = np.matmul(diff, velo_pca[i,:, None])/\
-            #     (np.linalg.norm(velo_pca[i,:], ord=2) * distance)
-            #     penalty = np.nan_to_num(penalty, 0)
-            #     # penalty = np.exp(distance.min() - distance)
-            #     weights = (np.exp(penalty)/np.sum(np.exp(penalty))).squeeze()
-            #     edge_attr = np.append(edge_attr, weights)
-            # edge_attr = torch.FloatTensor(edge_attr)
+            adj = np.full_like(conn, np.nan)
+            for i in range(conn.shape[0]):
+                indices = conn[i,:].nonzero()[0]
+                # diff = X_pca_ori[indices,:] - X_pca_ori[i,:]
+                # distance = np.linalg.norm(diff, axis=1, ord=2)[:,None]
+                # penalty = np.matmul(diff, velo_pca[i,:, None])/\
+                # (np.linalg.norm(velo_pca[i,:], ord=2) * distance)
+                # penalty = np.nan_to_num(penalty, 0)
+                # adj[i][indices] = penalty.squeeze()
+                # self loop
+                adj[i][i] = 3
+                # weights = np.full((conn.shape[1]), np.inf)
+                # weights[indices] = penalty.squeeze()
+                # # Self loop
+                # weights[i] = 1
+                # adj = np.stack((adj, weights))
+
+                indices = conn[i,:].nonzero()[0]
+                for k in indices:
+                    diff = X_pca_ori[i, :] - X_pca_ori[k, :] # 1,d
+                    distance = np.linalg.norm(diff, ord=2) #1
+                    penalty = np.dot(diff, velo_pca[k, :, None]) / np.linalg.norm(velo_pca[k,:], ord=2) / distance
+                    penalty = 0 if np.isnan(penalty) else penalty
+                    adj[i][k] = penalty
+                
+            # adj = torch.FloatTensor(adj)
             
-            data = Data(x=x, edge_index=edge_index, y=y)
+            data = Data(x=x, edge_index=edge_index, y=y, adj=adj)
             data.adata = adata
-            print(data)
             data_list.append(data)
 
         data, slices = self.collate(data_list)
