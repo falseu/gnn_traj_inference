@@ -29,13 +29,11 @@ class BaseModel(torch.nn.Module):
         # self.conv1 = GCNConv(in_channels, 32)
         # self.conv2 = GCNConv(32, 32)
 
-        self.conv1 = GraphConvolution(in_channels, 2*in_channels)
-        self.conv2 = GraphConvolution(2*in_channels, 2*in_channels)
+        self.conv1 = GCNConv(in_channels, 32)
+        self.conv2 = GCNConv(32, 32)
 
-        self.lin1 = nn.Linear(2*in_channels, 2*in_channels)
-        self.lin2 = nn.Linear(2*in_channels, 1)
-
-        self.device = device
+        self.lin1 = nn.Linear(32, 32)
+        self.lin2 = nn.Linear(32, 1)
 
     def forward(self, data):
         x = data.x.float()
@@ -51,6 +49,25 @@ class BaseModel(torch.nn.Module):
 
         x = self.conv1(x, adj, self.device)
         x = self.conv2(x, adj, self.device)
+        x = F.relu(self.lin1(x))
+        x = self.lin2(x)
+        return x
+
+class BaseModelClassification(torch.nn.Module):
+    def __init__(self, in_channels, num_classes):
+        super(BaseModelClassification, self).__init__()
+
+        self.conv1 = GCNConv(in_channels, in_channels)
+        self.conv2 = GCNConv(in_channels, in_channels)
+
+        self.lin1 = nn.Linear(in_channels, in_channels)
+        self.lin2 = nn.Linear(in_channels, num_classes)
+    
+    def forward(self, data, *input, **kwargs):
+        x, edge_index = data.x.float(), data.edge_index
+
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
         x = F.relu(self.lin1(x))
         x = self.lin2(x)
         return x

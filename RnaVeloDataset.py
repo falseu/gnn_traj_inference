@@ -33,11 +33,15 @@ class RnaVeloDataset(InMemoryDataset):
         pass
 
     def process(self):
-        backbones = ["bifurcating", "binary_tree", "linear", "trifurcating"]
+        backbones = ["bifurcating", "binary_tree", "cycle", "linear", "trifurcating"]
         seed = [1]
-        
         trans_rate = [3, 5, 10]
         num_cells = [100, 150, 200, 250, 300]
+
+        # seed = [6]
+        # trans_rate = [1]
+        # split_rate = [1]
+        # num_cells=[3000]
 
         root = '5_backbone/'
         
@@ -75,14 +79,14 @@ class RnaVeloDataset(InMemoryDataset):
             X_pca_ori = pipeline.fit_transform(X_spliced)
 
             # compute velocity
-            scv.tl.velocity_graph(adata)
+            # scv.tl.velocity_graph(adata)
 
             # predict gene expression data
-            velo_matrix = adata.layers["velocity"].copy()
-            X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
+            # velo_matrix = adata.layers["velocity"].copy()
+            # X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
 
-            X_pca_pre = pipeline.transform(X_pre)
-            velo_pca = X_pca_pre - X_pca_ori
+            # X_pca_pre = pipeline.transform(X_pre)
+            # velo_pca = X_pca_pre - X_pca_ori
 
             directed_conn = kneighbors_graph(X_pca_ori, n_neighbors=5, mode='connectivity', include_self=False).toarray()
             conn = directed_conn + directed_conn.T
@@ -91,10 +95,13 @@ class RnaVeloDataset(InMemoryDataset):
             x = torch.FloatTensor(X_pca_ori.copy())
 
             # Simulation time label
-            y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
-            scaler = MinMaxScaler((0, 1))
-            scaler.fit(y)
-            y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
+            # y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
+            # scaler = MinMaxScaler((0, 1))
+            # scaler.fit(y)
+            # y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
+
+            # Graph type label
+            y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
 
             # Graph type label
             # y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
