@@ -5,6 +5,7 @@ from torch_geometric.data import Data
 import pandas as pd
 import anndata
 import scvelo as scv
+import scanpy
 
 from scipy.sparse import csr_matrix
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
@@ -33,7 +34,8 @@ class RnaVeloDataset(InMemoryDataset):
         pass
 
     def process(self):
-        backbones = ["bifurcating", "binary_tree", "cycle", "linear", "trifurcating"]
+        # backbones = ["bifurcating", "binary_tree", "cycle", "linear", "trifurcating"]
+        backbones = ["bifurcating", "linear", "binary_tree", "trifurcating"]
         seed = [1]
         trans_rate = [3, 5, 10]
         num_cells = [100, 150, 200, 250, 300]
@@ -73,16 +75,29 @@ class RnaVeloDataset(InMemoryDataset):
                             ))
 
             # dimension reduction
-            X_concat = np.concatenate((X_spliced,X_unspliced),axis=1)
-            pca = PCA(n_components=10, svd_solver='arpack')
-            pipeline = Pipeline([('normalization', Normalizer()), ('pca', PCA(n_components=10, svd_solver='arpack'))])
-            X_pca_ori = pipeline.fit_transform(X_spliced)
+            # X_concat = np.concatenate((X_spliced,X_unspliced),axis=1)
+            # pca = PCA(n_components=10, svd_solver='arpack')
+            # pipeline = Pipeline([('normalization', Normalizer()), ('pca', PCA(n_components=10, svd_solver='arpack'))])
+            # X_pca_ori = pipeline.fit_transform(X_spliced)
+
+            scv.pp.filter_genes_dispersion(adata, n_top_genes = 72)
+            adata = adata[:,:70]
+            scv.pp.normalize_per_cell(adata)
+            scv.pp.log1p(adata)
 
             # compute velocity
-            # scv.tl.velocity_graph(adata)
-
-            # predict gene expression data
+            # scv.pp.filter_and_normalize(adata, n_top_genes=50)
+            scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+            # scv.tl.recover_dynamics(adata)
+            scv.tl.velocity(adata)
+            velo_matrix = adata.layers["velocity"].copy()
+            # genes_subset = ~np.isnan(velo_matrix).any(axis=0)
+            # adata._inplace_subset_var(genes_subset)
             # velo_matrix = adata.layers["velocity"].copy()
+            X_spliced = adata.X.toarray()
+            X_pca_ori = X_spliced
+            print(X_pca_ori.shape)
+
             # X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
 
             # X_pca_pre = pipeline.transform(X_pre)
@@ -95,13 +110,10 @@ class RnaVeloDataset(InMemoryDataset):
             x = torch.FloatTensor(X_pca_ori.copy())
 
             # Simulation time label
-            # y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
-            # scaler = MinMaxScaler((0, 1))
-            # scaler.fit(y)
-            # y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
-
-            # Graph type label
-            y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
+            y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
+            scaler = MinMaxScaler((0, 1))
+            scaler.fit(y)
+            y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
 
             # Graph type label
             # y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
@@ -118,8 +130,10 @@ class RnaVeloDataset(InMemoryDataset):
                 # (np.linalg.norm(velo_pca[i,:], ord=2) * distance)
                 # penalty = np.nan_to_num(penalty, 0)
                 # adj[i][indices] = penalty.squeeze()
+
                 # self loop
-                adj[i][i] = 3
+                adj[i][i] = 0
+                
                 # weights = np.full((conn.shape[1]), np.inf)
                 # weights[indices] = penalty.squeeze()
                 # # Self loop
@@ -130,7 +144,7 @@ class RnaVeloDataset(InMemoryDataset):
                 for k in indices:
                     diff = X_pca_ori[i, :] - X_pca_ori[k, :] # 1,d
                     distance = np.linalg.norm(diff, ord=2) #1
-                    penalty = np.dot(diff, velo_pca[k, :, None]) / np.linalg.norm(velo_pca[k,:], ord=2) / distance
+                    penalty = np.dot(diff, velo_matrix[k, :, None]) / np.linalg.norm(velo_matrix[k,:], ord=2) / distance
                     penalty = 0 if np.isnan(penalty) else penalty
                     adj[i][k] = penalty
                 

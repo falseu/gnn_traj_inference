@@ -17,6 +17,7 @@ class GraphConvolution(Module):
         self.dropout = dropout
         self.act = act
         self.weight = Parameter(torch.FloatTensor(in_features, out_features))
+        self.lin = torch.nn.Linear(in_features, out_features)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -25,10 +26,9 @@ class GraphConvolution(Module):
     def forward(self, input, adj, device):
         # first dropout some inputs
         # input = F.dropout(input, self.dropout, self.training)
-        
         # matrix multiplication, input of dimension N * Din, support of dimension N * Dout, message passing
-        #support = torch.mm(torch.cat((input, torch.ones(input.shape[0], 1).to(device)), dim=1), self.weight)
-        support = torch.mm(input, self.weight)
+        # support = torch.mm(torch.cat((input, torch.ones(input.shape[0], 1).to(device)), dim=1), self.weight)
+        support = self.lin(input)
         # matrix multiplication, averaging the support of neighboring nodes, aggregation step
         # adj np.inf denote disconnected
         # adj = adj + 1
