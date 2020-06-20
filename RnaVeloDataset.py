@@ -123,7 +123,7 @@ class RnaVeloDataset(InMemoryDataset):
 
             adj = np.full_like(conn, np.nan)
             for i in range(conn.shape[0]):
-                indices = conn[i,:].nonzero()[0]
+                # indices = conn[i,:].nonzero()[0]
                 # diff = X_pca_ori[indices,:] - X_pca_ori[i,:]
                 # distance = np.linalg.norm(diff, axis=1, ord=2)[:,None]
                 # penalty = np.matmul(diff, velo_pca[i,:, None])/\
