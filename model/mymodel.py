@@ -6,7 +6,7 @@ from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 import numpy as np
 from model.mylayer import GraphConvolution
 from model.GraphSAGE import GraphConvolutionSage
-import scipy.linalg
+from scipy.linalg import block_diag
 
 class MyModel(torch.nn.Module):
     def __init__(self, in_channels, device):
@@ -62,7 +62,12 @@ class GraphSAGEModel(torch.nn.Module):
 
     def forward(self, data):
         x = data.x.float()
-        adj = torch.FloatTensor(data.adj).view(x.shape[0], x.shape[0])
+
+        if len(data.adj) == 1:
+            adj = torch.FloatTensor(data.adj).view(x.shape[0], x.shape[0])
+        else:
+            adj = torch.FloatTensor(block_diag(*[i[0] for i in data.adj]))
+
         # adj np.inf denote disconnected
         # adj = adj + 1s
         adj = F.sigmoid(adj)
