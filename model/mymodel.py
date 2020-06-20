@@ -51,11 +51,14 @@ class GraphSAGEModel(torch.nn.Module):
         self.device = device
 
         self.conv1 = GraphConvolutionSage(in_channels, 32)
-        # self.conv2 = GraphConvolutionSage(32, 32)
-        # self.conv3 = GraphConvolutionSage(32, 32)
+        self.conv2 = GraphConvolutionSage(32, 32)
 
-        self.lin1 = nn.Linear(32, 32)
-        self.lin2 = nn.Linear(32, 1)
+        self.lin1 = nn.Linear(32, 1)
+    
+    def reset_parameters(self):
+        self.conv1.reset_parameters()
+        self.conv2.reset_parameters()
+        self.lin1.reset_parameters()
 
     def forward(self, data):
         x = data.x.float()
@@ -69,9 +72,7 @@ class GraphSAGEModel(torch.nn.Module):
 
         adj = adj.to(self.device)
 
-        x = self.conv1(x, adj, self.device)
-        # x = self.conv2(x, adj, self.device)
-        # x = self.conv3(x, adj, self.device)
-        x = F.relu(self.lin1(x))
-        x = self.lin2(x)
+        x = F.relu(self.conv1(x, adj, self.device))
+        x = F.relu(self.conv2(x, adj, self.device))
+        x = F.sigmoid(self.lin1(x))
         return x
