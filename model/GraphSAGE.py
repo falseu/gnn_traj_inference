@@ -16,27 +16,35 @@ class GraphConvolutionSage(Module):
         self.out_features = out_features
         self.dropout = dropout
         self.act = act
+        # method 1
         self.lin = nn.Linear(in_features = in_features, out_features = out_features, bias= True)
+        # method 2
         self.weight_neigh = Parameter(torch.FloatTensor(out_features, out_features))
         self.weight_self = Parameter(torch.FloatTensor(in_features, out_features))
         self.weight_support = Parameter(torch.FloatTensor(in_features, out_features))
-        # self.lin_neigh = nn.Linear(out_features, out_features, bias=False)
-        # self.lin_self = nn.Linear(in_features, out_features, False)
-        #self.lin_support = nn.Linear(in_features, out_features, False)
+        # with dimension (1, out_features), with broadcast -> (N, Dout)
+        self.bias_support = Parameter(torch.FloatTensor(1, out_features))
 
     def reset_parameters(self):
         torch.nn.init.xavier_uniform_(self.weight_neigh)
         torch.nn.init.xavier_uniform_(self.weight_self)
         torch.nn.init.xavier_uniform_(self.weight_support)
+        # initialization requires two dimension
+        torch.nn.init.xavier_uniform_(self.bias_support)
+        self.lin.reset_parameters()
         
 
     def forward(self, input, adj, device):
         # first dropout some inputs
-        # input = F.dropout(input, self.dropout, self.training)
+        input = F.dropout(input, self.dropout, self.training)
 
-        # Message:
-        # matrix multiplication, input of dimension N * Din, support of dimension N * Dout, message passing
-        support = F.sigmoid(torch.mm(input, self.weight_support))
+        # Message: two ways
+        # method1, matrix multiplication, input of dimension N * Din, support of dimension N * Dout, message passing
+        support = F.sigmoid(torch.mm(input, self.weight_support) + self.bias_support)
+        
+        # method2, use linear layer
+        # support = F.sigmoid(self.lin(input))
+
         # make diagonal position 0
         # with torch.no_grad():
         #     ind = np.diag_indices(adj.shape[0])
