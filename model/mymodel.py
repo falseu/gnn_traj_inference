@@ -141,7 +141,7 @@ class veloModel(torch.nn.Module):
         adj = F.sigmoid(adj)
 
         adj[torch.isnan(adj)] = 0
-        adj[adj <= 0.7] = 0
+        # adj[adj <= 0.7] = 0
         adj = adj * 4
 
         adj = adj.to(self.device)
