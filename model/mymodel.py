@@ -73,9 +73,7 @@ class GraphSAGEModel(torch.nn.Module):
             adj = torch.FloatTensor(block_diag(*[i[0] for i in data.adj]))
     
         # adj np.inf denote disconnected
-        # adj = adj + 1s
         adj = F.sigmoid(adj)
-        # adj = torch.where(torch.isnan(adj), torch.zeros_like(adj), adj)
 
         adj[torch.isnan(adj)] = 0
         adj[adj <= 0.7] = 0
@@ -89,4 +87,70 @@ class GraphSAGEModel(torch.nn.Module):
         # x = F.relu(self.lin2(torch.cat((x, v), dim=1)))
         # x = F.relu(self.lin2(x))
         x = F.sigmoid(self.lin3(x))
+        return x
+
+
+class FCModel(torch.nn.Module):
+    def __init__(self, in_channels, device):
+        super(FCModel, self).__init__()
+        self.device = device
+
+        self.lin1 = nn.Linear(in_channels, 64)
+        self.lin2 = nn.Linear(64, 64)
+        self.lin3 = nn.Linear(64, 1)
+    
+    def reset_parameters(self):
+        self.lin1.reset_parameters()
+        self.lin2.reset_parameters()
+        self.lin3.reset_parameters()
+
+    def forward(self, data):
+        x, v = data.x.float(), data.v.float()
+
+        x = F.relu(self.lin1(x))
+        x = F.relu(self.lin2(x))
+        x = F.sigmoid(self.lin3(x))
+        return x
+
+class veloModel(torch.nn.Module):
+    def __init__(self, in_channels, device):
+        super(veloModel, self).__init__()
+        self.device = device
+
+        self.conv1 = GraphConvolutionSage(in_channels, 32)
+        self.conv2 = GraphConvolutionSage(32, 8)
+
+        self.lin1 = nn.Linear(16, 1)
+        # self.lin2 = nn.Linear(16, 1)
+    
+    def reset_parameters(self):
+        self.conv1.reset_parameters()
+        self.conv2.reset_parameters()
+
+        self.lin1.reset_parameters()
+        # self.lin2.reset_parameters()
+
+    def forward(self, data):
+        x, v = data.x.float(), data.v.float()
+        if len(data.adj) == 1:
+            adj = torch.FloatTensor(data.adj).view(x.shape[0], x.shape[0])
+        else:
+            adj = torch.FloatTensor(block_diag(*[i[0] for i in data.adj]))
+    
+        # adj np.inf denote disconnected
+        adj = F.sigmoid(adj)
+
+        adj[torch.isnan(adj)] = 0
+        adj[adj <= 0.7] = 0
+        adj = adj * 4
+
+        adj = adj.to(self.device)
+
+        x = F.relu(self.conv1(x, adj, self.device))
+        x = F.relu(self.conv2(x, adj, self.device))
+        v = F.relu(self.conv1(v, adj, self.device))
+        v = F.relu(self.conv2(v, adj, self.device))
+        # x = F.relu(self.lin1(torch.cat((x, v), dim=1)))
+        x = F.sigmoid(self.lin1(torch.cat((x, v), dim=1)))
+        # x = F.sigmoid(self.lin2(x))
         return x

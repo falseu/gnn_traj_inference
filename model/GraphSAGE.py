@@ -10,12 +10,11 @@ class GraphConvolutionSage(Module):
     GraphSAGE
     """
 
-    def __init__(self, in_features, out_features, dropout=0., act=F.relu):
+    def __init__(self, in_features, out_features, dropout=0.):
         super(GraphConvolutionSage, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.dropout = dropout
-        self.act = act
         # method 1
         self.lin = nn.Linear(in_features = in_features, out_features = out_features, bias= True)
         # method 2
@@ -56,7 +55,7 @@ class GraphConvolutionSage(Module):
 
         # Update: 
         # output of dimension N * Dout
-        output = self.act(torch.mm(output, self.weight_neigh) + torch.mm(input, self.weight_self))
+        output = F.relu(torch.mm(output, self.weight_neigh) + torch.mm(input, self.weight_self))
         return output
 
     def __repr__(self):

@@ -90,8 +90,9 @@ class SymsimDataset(InMemoryDataset):
             # x = torch.FloatTensor(X_pca.copy())
 
             # X_pca_pre is after pca
-            v = torch.FloatTensor(X_pre.copy())
-            # v = torch.FloatTensor(X_pca_pre.copy())
+            v = StandardScaler().fit_transform(X_pre)
+            # v = velo_matrix.copy()
+            v = torch.FloatTensor(v)
 
             # Simulation time label
             y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
