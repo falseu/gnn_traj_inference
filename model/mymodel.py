@@ -150,6 +150,7 @@ class veloModel(torch.nn.Module):
         v = F.relu(self.conv1(v, adj, self.device))
         v = F.relu(self.conv2(v, adj, self.device))
         # x = F.relu(self.lin1(torch.cat((x, v), dim=1)))
-        x = F.sigmoid(self.lin1(torch.cat((x, v), dim=1)))
+        node_embed = torch.cat((x, v), dim=1)
+        x = F.sigmoid(self.lin1(node_embed))
         # x = F.sigmoid(self.lin2(x))
-        return x, adj
+        return x, node_embed, adj
