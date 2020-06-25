@@ -137,11 +137,10 @@ class veloModel(torch.nn.Module):
         else:
             adj = torch.FloatTensor(block_diag(*[i[0] for i in data.adj]))
     
-        # adj np.inf denote disconnected
+        # coded in the dataset generation process
         adj = F.sigmoid(adj)
 
         adj[torch.isnan(adj)] = 0
-        # adj[adj <= 0.7] = 0
         adj = adj * 4
 
         adj = adj.to(self.device)
@@ -153,4 +152,4 @@ class veloModel(torch.nn.Module):
         # x = F.relu(self.lin1(torch.cat((x, v), dim=1)))
         x = F.sigmoid(self.lin1(torch.cat((x, v), dim=1)))
         # x = F.sigmoid(self.lin2(x))
-        return x
+        return x, adj

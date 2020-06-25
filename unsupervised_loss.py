@@ -7,10 +7,11 @@ class UnsupervisedLoss(object):
         super(UnsupervisedLoss, self).__init__()
         self.Q = 10
         self.N_WALKS = 6
-        self.WALK_LEN = 3
+        self.WALK_LEN = 1
         self.N_WALK_LEN = 5
         self.MARGIN = 3
-        self.adj = adj
+        # eliminate self node
+        self.adj = adj - adj[0,0] * torch.diag(torch.ones((1,adj.shape[0])))
         self.train_nodes = train_nodes
         self.device = device
 
@@ -38,15 +39,12 @@ class UnsupervisedLoss(object):
             nodes:
                 The starting nodes of the random walk, training nodes
         """
-        # adj include diagonal nonzero
-        adj = self.adj - self.adj[0,0] * np.diag(np.ones((1,self.adj.shape[0])))
-
         for node in nodes:
             cur_pairs = []
             for i in range(self.N_WALKS):
                 curr_node = node
                 for j in range(self.WALK_LEN):
-                    neighs = np.where(adj[curr_node,:] != 0)[0]
+                    neighs = np.where(self.adj[curr_node,:] != 0)[0]
                     next_node = random.choice(neighs)
                     # self co-occurrences are useless
                     if next_node != node and next_node in self.train_nodes:
@@ -67,6 +65,7 @@ class UnsupervisedLoss(object):
         self.positive_pairs = []
         self.node_positive_pairs = {}
         self.negtive_pairs = []
+        # dictionary, with focus node as key
         self.node_negtive_pairs = {}
 
         self.target_nodes = nodes
@@ -74,11 +73,12 @@ class UnsupervisedLoss(object):
         self.get_positive_nodes(nodes)
 
         self.get_negtive_nodes(nodes, num_neg)
-        # print("positive pairs: ", self.positive_pairs)
-        # print("neg pairs: ", self.negtive_pairs)
+        # list of tuple [(node, neigh_i) for node in nodes for neigh_i in neigh(node)]
+        print("positive pairs: ", self.positive_pairs)
+        print("neg pairs: ", self.negtive_pairs)
 
         self.unique_nodes_batch = list(set([i for x in self.positive_pairs for i in x]) | set([i for x in self.negtive_pairs for i in x]))
-        print(set(self.unique_nodes_batch))
+        # print(set(self.unique_nodes_batch))
         assert set(self.target_nodes) < set(self.unique_nodes_batch)
         return self.unique_nodes_batch
 
@@ -92,16 +92,14 @@ class UnsupervisedLoss(object):
             num_neg:
                 Sampling parameters
         """
-        adj = self.adj - self.adj[0,0] * np.diag(np.ones((1,self.adj.shape[0])))
-
         for node in nodes:
             neighbors = set([node])
             frontier = set([node])
             for i in range(self.N_WALK_LEN):
                 current = set()
                 for outer in frontier:
-                    index = set(np.where(adj[int(outer),:] != 0)[0])
-                    current |= index 
+                    index = set(np.where(self.adj[int(outer),:] != 0)[0])
+                    current |= index
                 frontier = current - neighbors
                 neighbors |= current
             far_nodes = set(self.train_nodes) - neighbors
@@ -120,6 +118,7 @@ class UnsupervisedLoss(object):
         nodes_score = []
         assert len(self.node_positive_pairs) == len(self.node_negtive_pairs)
         for node in self.node_positive_pairs:
+            # dictionary
             pps = self.node_positive_pairs[node]
             nps = self.node_negtive_pairs[node]
             if len(pps) == 0 or len(nps) == 0:

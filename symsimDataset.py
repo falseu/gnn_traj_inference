@@ -2,6 +2,8 @@ import numpy as np
 import torch
 from torch_geometric.data import InMemoryDataset
 from torch_geometric.data import Data
+import torch.nn.functional as F
+
 import pandas as pd
 import anndata
 import scvelo as scv
