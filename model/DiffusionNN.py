@@ -65,7 +65,8 @@ class GraphDiffusion(Module):
             states = torch.cat((states, state1.reshape(1, num_nodes, -1)),dim = 0)
 
             for k in range(2, self.max_diffusion + 1):
-                state2 = 2 * torch.mm(trans, state1) - state0
+                # state2 = 2 * torch.mm(trans, state1) - state0
+                state2 = torch.mm(trans, state1)
                 # concatenate again (k, num_nodes, input_size * batch_size)
                 states = torch.cat((states, state2.reshape(1, num_nodes, -1)),dim = 0)
 
