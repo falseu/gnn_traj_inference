@@ -10,15 +10,20 @@ class GraphDiffusion(Module):
     GraphDiffusion
     """
 
-    def __init__(self, in_features, out_features, max_diffusion):
+    def __init__(self, in_features, out_features, max_diffusion, include_reversed = False):
         super(GraphDiffusion, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.max_diffusion = max_diffusion
+        self.include_reversed = include_reversed
+        if self.include_reversed:
+            self.weight_support = Parameter(torch.FloatTensor((self.max_diffusion * 2 + 1) * self.in_features, self.out_features))
+        else:
+            self.weight_support = Parameter(torch.FloatTensor((self.max_diffusion + 1) * self.in_features, self.out_features))
 
-        self.weight_support = Parameter(torch.FloatTensor((self.max_diffusion + 1) * self.in_features, self.out_features))
         # with dimension (1, out_features), with broadcast -> (N, Dout)
         self.bias_support = Parameter(torch.FloatTensor(1, self.out_features))
+        
 
     def reset_parameters(self):
         torch.nn.init.xavier_uniform_(self.weight_support)
@@ -44,25 +49,31 @@ class GraphDiffusion(Module):
         # make state0 (num_nodes, input_size * batch_size)
         state0 = input.permute(1,2,0)
         state0 = state0.reshape(num_nodes,-1)
-        states = state0
+        states = state0.reshape(1, num_nodes, -1)
 
         trans = self.calculate_transition(adj)
-
-        # state1 (num_nodes, input_size * batch_size)
-        state1 = torch.mm(trans, state0)
-        states = torch.cat((states.reshape(1, num_nodes, -1), state1.reshape(1, num_nodes, -1)),dim = 0)
-
-        for k in range(2, self.max_diffusion + 1):
-            state2 = 2 * torch.mm(trans, state1) - state0
-            # concatenate again (k, num_nodes, input_size * batch_size)
-            states = torch.cat((states.reshape(k, num_nodes, -1), state2.reshape(1, num_nodes, -1)),dim = 0)
-
-            # watch out for the order
-            state0 = state1
-            state1 = state2
         
-        K = self.max_diffusion + 1
+        if self.include_reversed:
+            reversed_trans = self.calculate_transition(adj.T)
+            transitions = [trans,reversed_trans]
+        else:
+            transitions = [trans]
 
+        for idx, trans in enumerate(transitions):
+            # state1 (num_nodes, input_size * batch_size)
+            state1 = torch.mm(trans, state0)
+            states = torch.cat((states, state1.reshape(1, num_nodes, -1)),dim = 0)
+
+            for k in range(2, self.max_diffusion + 1):
+                state2 = 2 * torch.mm(trans, state1) - state0
+                # concatenate again (k, num_nodes, input_size * batch_size)
+                states = torch.cat((states, state2.reshape(1, num_nodes, -1)),dim = 0)
+
+                # watch out for the order
+                state0 = state1
+                state1 = state2
+        
+        K = self.max_diffusion * len(transitions) + 1
         # (batch_size, num_nodes, input_size * K)
         states = states.reshape(K, num_nodes, input_size, batch_size)
         states = states.permute(3, 1, 2, 0)

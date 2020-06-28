@@ -157,15 +157,16 @@ class veloModel(torch.nn.Module):
         return x, node_embed, adj
 
 class DiffusionModel(torch.nn.Module):
-    def __init__(self, in_features, device):
+    def __init__(self, in_features, device, hidden1 = 128, hidden2 = 64, max_diffusion = 10, include_reversed = False):
         super(DiffusionModel, self).__init__()
         self.device = device
-        self.max_diffusion = 10
-        self.h1 = 256
-        self.h2 = 64
+        self.max_diffusion = max_diffusion
+        self.h1 = hidden1
+        self.h2 = hidden2
+        self.include_reversed = include_reversed
 
-        self.conv1 = GraphDiffusion(in_features, self.h1, self.max_diffusion)
-        self.conv2 = GraphDiffusion(self.h1, self.h2, self.max_diffusion)
+        self.conv1 = GraphDiffusion(in_features = in_features, out_features = self.h1, max_diffusion = self.max_diffusion, include_reversed = self.include_reversed)
+        self.conv2 = GraphDiffusion(in_features = self.h1, out_features = self.h2, max_diffusion = self.max_diffusion, include_reversed = self.include_reversed)
 
         self.lin = nn.Linear(self.h2, 1)
 
@@ -181,12 +182,9 @@ class DiffusionModel(torch.nn.Module):
         else:
             adj = torch.FloatTensor(block_diag(*[i[0] for i in data.adj]))
     
-        # coded in the dataset generation process
+        # coded in the dataset generation process, adj with self loop adj[i,i] = 0
         adj = F.sigmoid(adj)
-
         adj[torch.isnan(adj)] = 0
-        adj = adj * 4
-
         adj = adj.to(self.device)
 
         x = F.relu(self.conv1(x, adj, self.device))
