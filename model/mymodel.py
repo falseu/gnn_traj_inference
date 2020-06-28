@@ -7,6 +7,7 @@ import numpy as np
 from model.mylayer import GraphConvolution
 from model.GraphSAGE import GraphConvolutionSage
 from scipy.linalg import block_diag
+from model.DiffusionNN import GraphDiffusion
 
 class MyModel(torch.nn.Module):
     def __init__(self, in_channels, device):
@@ -147,10 +148,49 @@ class veloModel(torch.nn.Module):
 
         x = F.relu(self.conv1(x, adj, self.device))
         x = F.relu(self.conv2(x, adj, self.device))
-        v = F.relu(self.conv1(v, adj, self.device))
-        v = F.relu(self.conv2(v, adj, self.device))
+        # v = F.relu(self.conv1(v, adj, self.device))
+        # v = F.relu(self.conv2(v, adj, self.device))
         # x = F.relu(self.lin1(torch.cat((x, v), dim=1)))
         node_embed = torch.cat((x, v), dim=1)
         x = F.sigmoid(self.lin1(node_embed))
         # x = F.sigmoid(self.lin2(x))
         return x, node_embed, adj
+
+class DiffusionModel(torch.nn.Module):
+    def __init__(self, in_features, device):
+        super(DiffusionModel, self).__init__()
+        self.device = device
+        self.max_diffusion = 10
+        self.h1 = 256
+        self.h2 = 64
+
+        self.conv1 = GraphDiffusion(in_features, self.h1, self.max_diffusion)
+        self.conv2 = GraphDiffusion(self.h1, self.h2, self.max_diffusion)
+
+        self.lin = nn.Linear(self.h2, 1)
+
+    def reset_parameters(self):
+        self.conv1.reset_parameters()
+        self.conv2.reset_parameters()
+        self.lin.reset_parameters()
+
+    def forward(self, data):
+        x = data.x.float()
+        if len(data.adj) == 1:
+            adj = torch.FloatTensor(data.adj).view(x.shape[0], x.shape[0])
+        else:
+            adj = torch.FloatTensor(block_diag(*[i[0] for i in data.adj]))
+    
+        # coded in the dataset generation process
+        adj = F.sigmoid(adj)
+
+        adj[torch.isnan(adj)] = 0
+        adj = adj * 4
+
+        adj = adj.to(self.device)
+
+        x = F.relu(self.conv1(x, adj, self.device))
+        node_embed = F.relu(self.conv2(x, adj, self.device))
+        output = F.sigmoid(self.lin(node_embed))
+
+        return output, node_embed, adj
