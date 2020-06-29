@@ -106,7 +106,7 @@ class FCModel(torch.nn.Module):
         self.lin3.reset_parameters()
 
     def forward(self, data):
-        x, v = data.x.float(), data.v.float()
+        x = data.x.float()
 
         x = F.relu(self.lin1(x))
         x = F.relu(self.lin2(x))
