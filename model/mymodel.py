@@ -83,12 +83,12 @@ class GraphSAGEModel(torch.nn.Module):
         adj = adj.to(self.device)
 
         x = F.relu(self.conv1(x, adj, self.device))
-        x = F.relu(self.conv2(x, adj, self.device))
+        node_embed = F.relu(self.conv2(x, adj, self.device))
         # x = F.relu(self.lin1(x))
         # x = F.relu(self.lin2(torch.cat((x, v), dim=1)))
         # x = F.relu(self.lin2(x))
-        x = F.sigmoid(self.lin3(x))
-        return x
+        x = F.sigmoid(self.lin3(node_embed))
+        return x, node_embed, adj
 
 
 class FCModel(torch.nn.Module):
@@ -111,7 +111,7 @@ class FCModel(torch.nn.Module):
         x = F.relu(self.lin1(x))
         x = F.relu(self.lin2(x))
         x = F.sigmoid(self.lin3(x))
-        return x
+        return x, None, None
 
 class veloModel(torch.nn.Module):
     def __init__(self, in_channels, device):
