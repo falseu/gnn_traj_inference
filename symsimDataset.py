@@ -15,14 +15,28 @@ from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import kneighbors_graph
 
+def calculate_adj(conn, x, v):
+    adj = np.full_like(conn, np.nan)
+    for i in range(conn.shape[0]):
+        # self loop
+        adj[i][i] = 0
+
+        indices = conn[i,:].nonzero()[0]
+        for k in indices:
+            diff = x[i, :] - x[k, :] # 1,d
+            distance = np.linalg.norm(diff, ord=2) #1
+            # penalty = np.dot(diff, velo_matrix[k, :, None]) / np.linalg.norm(velo_matrix[k,:], ord=2) / distance
+            penalty = np.dot(diff, v[k, :, None]) / np.linalg.norm(v[k,:], ord=2) / distance
+            penalty = 0 if np.isnan(penalty) else penalty
+            adj[i][k] = penalty
+    return adj
 
 
-class SymsimDataset(InMemoryDataset):
+class SymsimBifur(InMemoryDataset):
 
-    def __init__(self, root, transform=None, pre_transform=None):
-        super(SymsimDataset, self).__init__(root, transform, pre_transform)
+    def __init__(self, root='data/', transform=None, pre_transform=None):
+        super(SymsimBifur, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
-        self.root = root
 
     @property
     def raw_file_names(self):
@@ -30,7 +44,7 @@ class SymsimDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return ['SymsimVelo.dataset']
+        return ['SymsimBifur.dataset']
 
     def download(self):
         pass
@@ -38,13 +52,15 @@ class SymsimDataset(InMemoryDataset):
     def process(self):
         start = 25
         end = 75
-        root = 'data/symsim/'
+        root = "data/symsim/"
         count = 2 * np.arange(start,end) + 1
         files = ['branch'+str(x) + '/' for x in count]
         data_list = []
-        
 
         for file_name in files:
+            print(self.root)
+            print(file_name)
+            print(root + file_name)
             X_unspliced = pd.read_csv(root + file_name + "unspliced_counts.txt", sep="\t",header=None).to_numpy().T
             X_spliced = pd.read_csv(root + file_name + "spliced_counts.txt", sep = "\t",header=None).to_numpy().T
             true_velo = pd.read_csv(root + file_name + "true_velo.txt", sep="\t",header=None).to_numpy().T
@@ -63,10 +79,6 @@ class SymsimDataset(InMemoryDataset):
             scv.pp.filter_and_normalize(adata, min_shared_counts=0, n_top_genes=305)
             adata = adata[:,:300]
             print(adata.n_vars)
-
-            # adata = adata[:,:70]
-            # scv.pp.normalize_per_cell(adata)
-            # scv.pp.log1p(adata)
 
             # compute velocity
             scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
@@ -92,11 +104,9 @@ class SymsimDataset(InMemoryDataset):
             x = X_spliced.copy()
             x = StandardScaler().fit_transform(x)
             x = torch.FloatTensor(x)
-            # x = torch.FloatTensor(X_pca.copy())
 
             # X_pca_pre is after pca
             v = StandardScaler().fit_transform(X_pre)
-            # v = velo_matrix.copy()
             v = torch.FloatTensor(v)
 
             # Simulation time label
@@ -111,27 +121,42 @@ class SymsimDataset(InMemoryDataset):
             edge_index = np.array(np.where(conn == 1))
             edge_index = torch.LongTensor(edge_index)
 
-            adj = np.full_like(conn, np.nan)
-            for i in range(conn.shape[0]):
-                # self loop
-                adj[i][i] = 0
-
-                indices = conn[i,:].nonzero()[0]
-                for k in indices:
-                    diff = X_pca[i, :] - X_pca[k, :] # 1,d
-                    distance = np.linalg.norm(diff, ord=2) #1
-                    # penalty = np.dot(diff, velo_matrix[k, :, None]) / np.linalg.norm(velo_matrix[k,:], ord=2) / distance
-                    penalty = np.dot(diff, velo_pca[k, :, None]) / np.linalg.norm(velo_pca[k,:], ord=2) / distance
-                    penalty = 0 if np.isnan(penalty) else penalty
-                    adj[i][k] = penalty
+            adj = calculate_adj(conn, X_pca, velo_pca)
                 
             assert adata.n_vars == 300
             data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
 
             data_list.append(data)
-        
-        # tree
+
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])
+
+    def __repr__(self):
+        return '{}()'.format(self.__class__.__name__)
+
+
+class SymsimTree(InMemoryDataset):
+
+    def __init__(self, root='data/', transform=None, pre_transform=None):
+        super(SymsimTree, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        return []
+
+    @property
+    def processed_file_names(self):
+        return ['SymsimTree.dataset']
+
+    def download(self):
+        pass
+
+    def process(self):
+        data_list = []
+        root = "data/symsim/"
         tree_files = ['tree/rand'+str(i)+'/' for i in range(1,101)]
+
         for file_name in tree_files:
             X_unspliced = pd.read_csv(root + file_name + "unspliced_counts.txt", sep="\t",header=None).to_numpy().T
             X_spliced = pd.read_csv(root + file_name + "spliced_counts.txt", sep = "\t",header=None).to_numpy().T
@@ -198,20 +223,7 @@ class SymsimDataset(InMemoryDataset):
             edge_index = np.array(np.where(conn == 1))
             edge_index = torch.LongTensor(edge_index)
 
-            adj = np.full_like(conn, np.nan)
-            for i in range(conn.shape[0]):
-                # self loop
-                adj[i][i] = 0
-
-                indices = conn[i,:].nonzero()[0]
-                for k in indices:
-                    diff = X_pca[i, :] - X_pca[k, :] # 1,d
-                    distance = np.linalg.norm(diff, ord=2) #1
-                    # penalty = np.dot(diff, velo_matrix[k, :, None]) / np.linalg.norm(velo_matrix[k,:], ord=2) / distance
-                    penalty = np.dot(diff, velo_pca[k, :, None]) / np.linalg.norm(velo_pca[k,:], ord=2) / distance
-                    penalty = 0 if np.isnan(penalty) else penalty
-                    adj[i][k] = penalty
-                
+            adj = calculate_adj(conn, X_pca, velo_pca)
             
             data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
 
@@ -219,18 +231,15 @@ class SymsimDataset(InMemoryDataset):
             data_list.append(data)
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
-
     def __repr__(self):
         return '{}()'.format(self.__class__.__name__)
 
 
-
 class SymsimBranch(InMemoryDataset):
 
-    def __init__(self, root, transform=None, pre_transform=None):
+    def __init__(self, root='data/', transform=None, pre_transform=None):
         super(SymsimBranch, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
-        self.root = root
 
     @property
     def raw_file_names(self):
@@ -244,7 +253,7 @@ class SymsimBranch(InMemoryDataset):
         pass
 
     def process(self):
-        root = 'data/symsim/'
+        root = "data/symsim/"
         tree_files = ['tree/rand'+str(i)+'/' for i in range(1,101)]
         branchs = [['1_2','2_3','3_5'],['1_2','2_3','3_6'],['1_2','2_4','4_7'],['1_2','2_4','4_8']]
         data_list = []
@@ -315,20 +324,7 @@ class SymsimBranch(InMemoryDataset):
                 edge_index = np.array(np.where(conn == 1))
                 edge_index = torch.LongTensor(edge_index)
 
-                adj = np.full_like(conn, np.nan)
-                for i in range(conn.shape[0]):
-                    # self loop
-                    adj[i][i] = 0
-
-                    indices = conn[i,:].nonzero()[0]
-                    for k in indices:
-                        diff = X_pca[i, :] - X_pca[k, :] # 1,d
-                        distance = np.linalg.norm(diff, ord=2) #1
-                        # penalty = np.dot(diff, velo_matrix[k, :, None]) / np.linalg.norm(velo_matrix[k,:], ord=2) / distance
-                        penalty = np.dot(diff, velo_pca[k, :, None]) / np.linalg.norm(velo_pca[k,:], ord=2) / distance
-                        penalty = 0 if np.isnan(penalty) else penalty
-                        adj[i][k] = penalty
-                    
+                adj = calculate_adj(conn, X_pca, velo_pca)
                 
                 data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
                 data_list.append(data)
@@ -341,10 +337,9 @@ class SymsimBranch(InMemoryDataset):
 
 class SymsimLinear(InMemoryDataset):
 
-    def __init__(self, root, transform=None, pre_transform=None):
+    def __init__(self, root='data/', transform=None, pre_transform=None):
         super(SymsimLinear, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
-        self.root = root
 
     @property
     def raw_file_names(self):
@@ -358,7 +353,7 @@ class SymsimLinear(InMemoryDataset):
         pass
 
     def process(self):
-        root = 'data/symsim/'
+        root = "data/symsim/"
         tree_files = ['linear/rand'+str(i)+'/' for i in range(1,51)]
         data_list = []
 
@@ -407,11 +402,9 @@ class SymsimLinear(InMemoryDataset):
             x = X_spliced.copy()
             x = StandardScaler().fit_transform(x)
             x = torch.FloatTensor(x)
-            # x = torch.FloatTensor(X_pca.copy())
 
             # X_pca_pre is after pca
             v = StandardScaler().fit_transform(X_pre)
-            # v = velo_matrix.copy()
             v = torch.FloatTensor(v)
 
             # Simulation time label
@@ -426,20 +419,7 @@ class SymsimLinear(InMemoryDataset):
             edge_index = np.array(np.where(conn == 1))
             edge_index = torch.LongTensor(edge_index)
 
-            adj = np.full_like(conn, np.nan)
-            for i in range(conn.shape[0]):
-                # self loop
-                adj[i][i] = 0
-
-                indices = conn[i,:].nonzero()[0]
-                for k in indices:
-                    diff = X_pca[i, :] - X_pca[k, :] # 1,d
-                    distance = np.linalg.norm(diff, ord=2) #1
-                    # penalty = np.dot(diff, velo_matrix[k, :, None]) / np.linalg.norm(velo_matrix[k,:], ord=2) / distance
-                    penalty = np.dot(diff, velo_pca[k, :, None]) / np.linalg.norm(velo_pca[k,:], ord=2) / distance
-                    penalty = 0 if np.isnan(penalty) else penalty
-                    adj[i][k] = penalty
-                
+            adj = calculate_adj(conn, X_pca, velo_pca)
             
             data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
             data_list.append(data)
@@ -448,9 +428,10 @@ class SymsimLinear(InMemoryDataset):
     def __repr__(self):
         return '{}()'.format(self.__class__.__name__)
 
+
 class dyngenCircle(InMemoryDataset):
 
-    def __init__(self, root, transform=None, pre_transform=None):
+    def __init__(self, root='data/', transform=None, pre_transform=None):
         super(dyngenCircle, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
         self.root = root
@@ -468,7 +449,6 @@ class dyngenCircle(InMemoryDataset):
 
     def process(self):
         root = 'data/circle/'
-
         trans_rate = ['3','5']
         backbones = ['cycle', 'cycle_simple']
         num_cells = ['300']
@@ -528,11 +508,9 @@ class dyngenCircle(InMemoryDataset):
             x = X_spliced.copy()
             x = StandardScaler().fit_transform(x)
             x = torch.FloatTensor(x)
-            # x = torch.FloatTensor(X_pca.copy())
 
             # X_pca_pre is after pca
             v = StandardScaler().fit_transform(X_pre)
-            # v = velo_matrix.copy()
             v = torch.FloatTensor(v)
 
             # Simulation time label
@@ -547,20 +525,7 @@ class dyngenCircle(InMemoryDataset):
             edge_index = np.array(np.where(conn == 1))
             edge_index = torch.LongTensor(edge_index)
 
-            adj = np.full_like(conn, np.nan)
-            for i in range(conn.shape[0]):
-                # self loop
-                adj[i][i] = 0
-
-                indices = conn[i,:].nonzero()[0]
-                for k in indices:
-                    diff = X_pca[i, :] - X_pca[k, :] # 1,d
-                    distance = np.linalg.norm(diff, ord=2) #1
-                    # penalty = np.dot(diff, velo_matrix[k, :, None]) / np.linalg.norm(velo_matrix[k,:], ord=2) / distance
-                    penalty = np.dot(diff, velo_pca[k, :, None]) / np.linalg.norm(velo_pca[k,:], ord=2) / distance
-                    penalty = 0 if np.isnan(penalty) else penalty
-                    adj[i][k] = penalty
-                
+            adj = calculate_adj(conn, X_pca, velo_pca)
             
             data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
             data_list.append(data)

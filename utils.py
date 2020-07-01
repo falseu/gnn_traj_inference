@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torch_geometric.data import Data
 import torch 
+from sklearn.metrics import mean_squared_error
 
 def pca_op(X, n_comps = 2, standardize  = True):
     """\
@@ -93,9 +94,8 @@ def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", m
         ax1.set_title("Prediction, pearson="+str(loss)[:5])
 
     else:
-       
-        loss = np.linalg.norm(pred - y, ord = 2)
-        ax1.set_title("Prediction, mse="+str(loss)[:5])
+        loss = mean_squared_error(y, pred)
+        ax1.set_title("Prediction, rmse="+str(loss)[:5])
 
     ax2.set_title("Ground Truth")
     print(loss)
@@ -103,7 +103,7 @@ def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", m
 
     if coloring == "order":
         y_sorted = sorted(y)
-        pred = [y_sorted.index(i) for i in y]
+        y = [y_sorted.index(i) for i in y]
 
         pred_sorted = sorted(pred)
         pred = [pred_sorted.index(i) for i in pred]
