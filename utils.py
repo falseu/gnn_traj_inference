@@ -39,6 +39,21 @@ def kendalltau(y_pred, y_label):
     tau, p_val = kendalltau(y_pred, y_label)
     return tau
 
+def pearson(y_pred, y_label):
+    if isinstance(y_label, torch.Tensor):
+        y_label = y_label.numpy().squeeze()
+    else:
+        y_label = y_label.squeeze()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.numpy().squeeze()
+    else:
+        y_pred = y_pred.squeeze()
+
+    vx = y_pred - np.mean(y_pred)
+    vy = y_label - np.mean(y_label)
+    score = np.sum(vx * vy) / (np.sqrt(np.sum(vx ** 2)) * np.sqrt(np.sum(vy ** 2)))
+    return score
+
 def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", metric = "kendall_tau"):
     model.eval()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -74,9 +89,7 @@ def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", m
         loss = kendalltau(pred, y)
         ax1.set_title("Prediction, kendalltau="+str(loss)[:5])
     elif metric == "pearson":
-        vx = pred - np.mean(pred)
-        vy = y - np.mean(y)
-        loss = np.sum(vx * vy) / (np.sqrt(np.sum(vx ** 2)) * np.sqrt(np.sum(vy ** 2)))
+        loss = pearson(pred, y)
         ax1.set_title("Prediction, pearson="+str(loss)[:5])
 
     else:

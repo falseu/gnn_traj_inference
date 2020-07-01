@@ -74,16 +74,16 @@ design_datasets <- exp$result("design_datasets.rds") %cache% {
   crossing(
 
     # linear_simple
-    backbone_name = names(list_backbones())[[13]],
-    seed = c(6),
+    backbone_name = names(list_backbones())[[9]],
+    seed = c(1),
     #tr_rate_multiplier = c(1),
     #spl_rate_multiplier = c(1),
     #degrade_multiplier = c(1),
     #num_cells = c(200)
-    tr_rate_multiplier = c(1, 5, 10),
-    spl_rate_multiplier = c(0.1, 0.5, 1, 5, 10),
+    tr_rate_multiplier = c(5, 10),
+    spl_rate_multiplier = c(0.1, 1),
     degrade_multiplier = c(1),
-    num_cells = c(210, 220, 230, 240, 250, 260, 270, 280, 290, 300),
+    num_cells = c(300),
   ) %>%
     mutate(id = paste0(backbone_name, "_", seed, "_", tr_rate_multiplier , "_", spl_rate_multiplier, "_", num_cells))
 }
@@ -103,11 +103,11 @@ pwalk(design_datasets, function(id, seed, backbone_name, tr_rate_multiplier, spl
     # num_cell params
     num_cells <- num_cells
     # num tfs, here is 24 for bifurcating
-    num_tfs <- nrow(backbone$module_info) * 2
+    num_tfs <- nrow(backbone$module_info) * 5
     # num targets 
-    num_targets <- 70 * 2
+    num_targets <- 70 * 5
     # num hks
-    num_hks <- 0 
+    num_hks <- 10 
     # distance matric
     distance_matric <- "eucildean"
     # tf_network params
