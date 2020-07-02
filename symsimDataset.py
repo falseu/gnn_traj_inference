@@ -430,10 +430,9 @@ class SymsimLinear(InMemoryDataset):
 
 class SymsimCycle(InMemoryDataset):
 
-    def __init__(self, root='data/', transform=None, pre_transform=None, smooth_beginning = True):
+    def __init__(self, root='data/', transform=None, pre_transform=None):
         super(SymsimCycle, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
-        self.smooth_beginning = smooth_beginning
 
     @property
     def raw_file_names(self):
@@ -477,9 +476,8 @@ class SymsimCycle(InMemoryDataset):
             scv.tl.velocity(adata, mode='stochastic')            
             velo_matrix = adata.layers["velocity"].copy()
 
-            if self.smooth_beginning:
-                bias = np.concatenate((np.exp(-0.5*np.linspace(0,3,25)**2)[::-1],np.ones(velo_matrix.shape[0]-100),np.exp(-0.5*np.linspace(0,3,25)**2)), axis = None)[:,None]
-                velo_matrix = bias * velo_matrix
+            bias = np.concatenate((np.exp(-0.5*np.linspace(0,3,25)**2)[::-1],np.ones(velo_matrix.shape[0]-50),np.exp(-0.5*np.linspace(0,3,25)**2)), axis = None)[:,None]
+            velo_matrix = bias * velo_matrix
 
             X_spliced = adata.X.toarray()
 
