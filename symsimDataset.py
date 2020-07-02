@@ -448,7 +448,7 @@ class SymsimCycle(InMemoryDataset):
 
     def process(self):
         root = "data/symsim/"
-        tree_files = ['cycle/rand'+str(i)+'/' for i in range(1,51)]
+        tree_files = ['cycle/rand'+str(i)+'/' for i in range(1,101)]
         data_list = []
 
         for file_name in tree_files:

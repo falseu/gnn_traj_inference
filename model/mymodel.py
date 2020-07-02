@@ -187,8 +187,8 @@ class DiffusionModel(torch.nn.Module):
         adj[torch.isnan(adj)] = 0
         adj = adj.to(self.device)
 
-        x = F.relu(self.conv1(x, adj, self.device))
-        node_embed = F.relu(self.conv2(x, adj, self.device))
+        x = F.relu(F.dropout(self.conv1(x, adj, self.device), p = 0.5, training = self.training))
+        node_embed = F.relu(F.dropout(self.conv2(x, adj, self.device), p = 0.2, training = self.training))
         output = F.sigmoid(self.lin(node_embed))
 
         return output, node_embed, adj
