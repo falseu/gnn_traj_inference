@@ -54,7 +54,7 @@ class SymsimBifur(InMemoryDataset):
         end = 75
         root = "data/symsim/"
         count = 2 * np.arange(start,end) + 1
-        files = ['branch'+str(x) + '/' for x in count]
+        files = ['bifur/branch'+str(x) + '/' for x in count]
         data_list = []
 
         for file_name in files:
@@ -428,6 +428,104 @@ class SymsimLinear(InMemoryDataset):
     def __repr__(self):
         return '{}()'.format(self.__class__.__name__)
 
+class SymsimCycle(InMemoryDataset):
+
+    def __init__(self, root='data/', transform=None, pre_transform=None, smooth_beginning = True):
+        super(SymsimCycle, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+        self.smooth_beginning = smooth_beginning
+
+    @property
+    def raw_file_names(self):
+        return []
+
+    @property
+    def processed_file_names(self):
+        return ['SymsimCycle.dataset']
+
+    def download(self):
+        pass
+
+    def process(self):
+        root = "data/symsim/"
+        tree_files = ['cycle/rand'+str(i)+'/' for i in range(1,51)]
+        data_list = []
+
+        for file_name in tree_files:
+            X_unspliced = pd.read_csv(root + file_name + "unspliced_counts.txt", sep="\t",header=None).to_numpy().T
+            X_spliced = pd.read_csv(root + file_name + "spliced_counts.txt", sep = "\t",header=None).to_numpy().T
+            true_velo = pd.read_csv(root + file_name + "true_velo.txt", sep="\t",header=None).to_numpy().T
+            true_time = pd.read_csv(root + file_name + "true_time.txt", sep = "\t",lineterminator="\n", header = None).to_numpy()
+            X_obs = pd.DataFrame(data=true_time, index = ['cell_' + str(x) for x in range(X_unspliced.shape[0])], columns = ['sim_time'])
+
+
+            adata_ori = anndata.AnnData(X = csr_matrix(X_spliced),
+                            obs = X_obs,
+                            layers = dict(
+                                unspliced = csr_matrix(X_unspliced),
+                                spliced = csr_matrix(X_spliced),
+                                true_velo = true_velo
+                            ))
+        
+            adata = adata_ori.copy()
+
+            scv.pp.filter_and_normalize(adata, min_shared_counts=0, n_top_genes=1000)
+            print("cycle dimension ",adata.n_vars)
+
+            # compute velocity
+            scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+            scv.tl.velocity(adata, mode='stochastic')            
+            velo_matrix = adata.layers["velocity"].copy()
+
+            if self.smooth_beginning:
+                bias = np.concatenate((np.exp(-0.5*np.linspace(0,3,25)**2)[::-1],np.ones(velo_matrix.shape[0]-100),np.exp(-0.5*np.linspace(0,3,25)**2)), axis = None)[:,None]
+                velo_matrix = bias * velo_matrix
+
+            X_spliced = adata.X.toarray()
+
+            pipeline = Pipeline([('pca', PCA(n_components=80, svd_solver='arpack'))])
+            X_pca = pipeline.fit_transform(X_spliced)
+
+            # X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
+            X_pre = X_spliced + velo_matrix
+
+            X_pca_pre = pipeline.transform(X_pre)
+            velo_pca = X_pca_pre - X_pca
+
+            directed_conn = kneighbors_graph(X_pca, n_neighbors=10, mode='connectivity', include_self=False).toarray()
+            conn = directed_conn + directed_conn.T
+            conn[conn.nonzero()[0],conn.nonzero()[1]] = 1
+
+            # X_spliced is original, X_pca is after pca
+            x = X_spliced.copy()
+            x = StandardScaler().fit_transform(x)
+            x = torch.FloatTensor(x)
+
+            # X_pca_pre is after pca
+            v = StandardScaler().fit_transform(X_pre)
+            v = torch.FloatTensor(v)
+
+            # Simulation time label
+            y = adata.obs['sim_time'].to_numpy().reshape((-1, 1))
+            scaler = MinMaxScaler((0, 1))
+            scaler.fit(y)
+            y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
+
+            # Graph type label
+            # y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
+
+            edge_index = np.array(np.where(conn == 1))
+            edge_index = torch.LongTensor(edge_index)
+
+            adj = calculate_adj(conn, X_pca, velo_pca)
+            
+            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
+            data_list.append(data)
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])       
+    def __repr__(self):
+        return '{}()'.format(self.__class__.__name__)
+
 
 class dyngenCircle(InMemoryDataset):
 
@@ -449,8 +547,8 @@ class dyngenCircle(InMemoryDataset):
 
     def process(self):
         root = 'data/circle/'
-        trans_rate = ['3','5']
-        backbones = ['cycle', 'cycle_simple']
+        trans_rate = ['1']
+        backbones = ['cycle']
         num_cells = ['300']
         
         combined = [(bb, tr, nc) for bb in backbones for tr in trans_rate for nc in num_cells]
