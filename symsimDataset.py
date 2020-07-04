@@ -476,8 +476,8 @@ class SymsimCycle(InMemoryDataset):
             scv.tl.velocity(adata, mode='stochastic')            
             velo_matrix = adata.layers["velocity"].copy()
 
-            bias = np.concatenate((np.exp(-0.5*np.linspace(0,3,25)**2)[::-1],np.ones(velo_matrix.shape[0]-50),np.exp(-0.5*np.linspace(0,3,25)**2)), axis = None)[:,None]
-            velo_matrix = bias * velo_matrix
+            # bias = np.concatenate((np.exp(-0.5*np.linspace(0,3,25)**2)[::-1],np.ones(velo_matrix.shape[0]-50),np.exp(-0.5*np.linspace(0,3,25)**2)), axis = None)[:,None]
+            # velo_matrix = bias * velo_matrix
 
             X_spliced = adata.X.toarray()
 

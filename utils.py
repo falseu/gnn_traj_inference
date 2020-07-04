@@ -55,7 +55,7 @@ def pearson(y_pred, y_label):
     score = np.sum(vx * vy) / (np.sqrt(np.sum(vx ** 2)) * np.sqrt(np.sum(vy ** 2)))
     return score
 
-def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", metric = "kendall_tau"):
+def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", metric = "kendall_tau", knn=False):
     model.eval()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # X should be something before pca
@@ -84,7 +84,11 @@ def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", m
 
     pred = pred.detach().cpu().numpy().reshape(-1)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    if knn: 
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 10))
+        ax3.set_title('knn')
+    else:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
     if metric == "kendall_tau":
         loss = kendalltau(pred, y)
@@ -113,5 +117,9 @@ def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", m
 
     v2 = ax2.scatter(X_pca[:,0],X_pca[:,1], cmap = 'gnuplot', c=y)
     fig.colorbar(v1, fraction=0.046, pad=0.04, ax = ax2)
-    plt.figure(figsize=figsize)
+
+    if knn:
+        edges = data.edge_index.cpu().numpy()
+        for i in range(edges.shape[1]):
+            ax3.plot(X_pca[edges[:,i]][:,0], X_pca[edges[:,i]][:,1])
     plt.show()
