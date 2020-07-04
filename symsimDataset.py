@@ -217,6 +217,8 @@ class SymsimTree(InMemoryDataset):
             scaler.fit(y)
             y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
 
+            bbs = adata.obs['back_bone'].values
+
             # Graph type label
             # y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
 
@@ -225,7 +227,7 @@ class SymsimTree(InMemoryDataset):
 
             adj = calculate_adj(conn, X_pca, velo_pca)
             
-            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
+            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, bbs = bbs)
 
             assert adata.n_vars == 300
             data_list.append(data)
