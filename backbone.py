@@ -27,11 +27,12 @@ def random_walk(X, y, t_max = 10000, i_max = 10, k = 10):
                 break
     return randwk
 
-def segmentation(random_wk, node_features, cell_backbone = None, wind_size = 10, step = 2):
+def segmentation(random_wk, node_features, y, cell_backbone = None, wind_size = 10, step = 2):
     belongings = []
     segments = []
     features = []
     bbs = []
+    pseudo_time = []
     
     for i in random_wk.keys():
         rwk_i = random_wk[i]
@@ -44,18 +45,20 @@ def segmentation(random_wk, node_features, cell_backbone = None, wind_size = 10,
     segments = np.array(segments)
     belongings = np.array(belongings)
 
-    for seg in range(len(segments)):
+    for seg in range(segments.shape[0]):
         features.append([])
         bbs.append([])
+        pseudo_time.append([])
         for idx in segments[seg,:]:
             features[-1].extend(node_features[idx,:])
+            pseudo_time[-1].append(y[idx])
             if cell_backbone:
                 bbs[-1].append(cell_backbone[idx])
         unique, counts = np.unique(np.array(bbs[-1]), return_counts=True)
         # print("seg: ", seg, ", bbs[-1]: ", unique[np.argmax(counts)], ", bbs: ", bbs[-1])
-        bbs[-1] = unique[np.argmax(counts)]
-        
-        adj = np.zeros((segments.shape[0],segments.shape[0]))
+        bbs[-1] = unique[np.argmax(counts)]    
+    
+    adj = np.zeros((segments.shape[0],segments.shape[0]))
 
     for curr_seg in range(segments.shape[0]):
         rwk_i = belongings[curr_seg]
@@ -68,9 +71,9 @@ def segmentation(random_wk, node_features, cell_backbone = None, wind_size = 10,
             adj[curr_seg, [curr_seg - 1, curr_seg + 1]] = 1       
     
     if cell_backbone:
-        return {"rwk": belongings, "segments": segments, "seg_features": np.array(features), "adjacency": adj, "seg_backbone": np.array(bbs)}
+        return {"rwk": belongings, "segments": segments, "seg_features": np.array(features), "adjacency": adj, "seg_backbone": np.array(bbs), "pseudo_time": np.array(pseudo_time)}
     else:
-        return {"rwk": belongings, "segments": segments, "adjacency": adj, "seg_features": np.array(features)}
+        return {"rwk": belongings, "segments": segments, "adjacency": adj, "seg_features": np.array(features), "pseudo_time": np.array(pseudo_time)}
     
 def retrieve_conn_eigen_pool(seg, groups):
     """\
