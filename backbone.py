@@ -29,7 +29,8 @@ def random_walk(X, y, t_max = 10000, i_max = 10, k = 10):
                 break
     return randwk
 
-def segmentation(random_wk, node_features, y, cell_backbone = None, wind_size = 10, step = 2):
+"""
+def segmentation(random_wk, node_features, y, wind_size = 10, step = 2):
     belongings = []
     segments = []
     features = []
@@ -53,13 +54,7 @@ def segmentation(random_wk, node_features, y, cell_backbone = None, wind_size = 
         pseudo_time.append([])
         for idx in segments[seg,:]:
             features[-1].extend(node_features[idx,:])
-            pseudo_time[-1].append(y[idx])
-        #     if cell_backbone:
-        #         bbs[-1].append(cell_backbone[idx])
-        # unique, counts = np.unique(np.array(bbs[-1]), return_counts=True)
-        # # print("seg: ", seg, ", bbs[-1]: ", unique[np.argmax(counts)], ", bbs: ", bbs[-1])
-        # bbs[-1] = unique[np.argmax(counts)]    
-    
+            pseudo_time[-1].append(y[idx])      
     
     block_diagonal = []
     adj = np.zeros((segments.shape[0],segments.shape[0]))
@@ -70,11 +65,52 @@ def segmentation(random_wk, node_features, y, cell_backbone = None, wind_size = 
         adj[indices[0]:indices[-1], indices[0]:indices[-1]+1] += adj_temp[1:, :]
         adj[indices[1]:indices[-1]+1, indices[0]:indices[-1]+1] += adj_temp[0:-1, :]    
     
-    # if cell_backbone:
-    #     return {"rwk": belongings, "segments": segments, "seg_features": np.array(features), "adjacency": adj, "seg_backbone": np.array(bbs), "pseudo_time": np.array(pseudo_time)}
-    # else:
+    return {"rwk": belongings, "segments": segments, "adjacency": adj, "seg_features": np.array(features), "pseudo_time": np.array(pseudo_time)}
+"""    
+def segmentation(random_wk, node_features, y, cell_backbone = None, wind_size = 10, step = 2):
+    belongings = []
+    segments = []
+    features = []
+    bbs = []
+    pseudo_time = []
+    
+    # iterating keys, while allowing key deletion during the iteration
+    for i in list(random_wk):
+        rwk_i = random_wk[i]
+        curr_step = 0
+        # if the length of random walk is smaller than the window size, bug here
+        if len(rwk_i) < wind_size:
+            del random_wk[i]
+        else:
+            while(curr_step+wind_size < len(rwk_i)):
+                segments.append(rwk_i[curr_step:curr_step+wind_size])
+                belongings.append([i])
+                curr_step += step
+        
+    segments = np.array(segments)
+    belongings = np.array(belongings)
+
+    for seg in range(segments.shape[0]):
+        features.append([])
+        bbs.append([])
+        pseudo_time.append([])
+        for idx in segments[seg,:]:
+            features[-1].extend(node_features[idx,:])
+            pseudo_time[-1].append(y[idx]) 
+    
+    
+    block_diagonal = []
+    adj = np.zeros((segments.shape[0],segments.shape[0]))
+
+    for i in random_wk.keys():
+        indices = np.where(belongings.squeeze() == i)[0]
+        adj_temp = np.eye(indices.shape[0], indices.shape[0])
+        adj[indices[0]:indices[-1], indices[0]:indices[-1]+1] += adj_temp[1:, :]
+        adj[indices[1]:indices[-1]+1, indices[0]:indices[-1]+1] += adj_temp[0:-1, :] 
+
     return {"rwk": belongings, "segments": segments, "adjacency": adj, "seg_features": np.array(features), "pseudo_time": np.array(pseudo_time)}
     
+
 def retrieve_conn_eigen_pool(seg, groups):
     """\
         seg: the segmentation result
@@ -118,15 +154,28 @@ def retrieve_conn(seg, groups):
     
     return adj_group
 
-def post_processing_graph(adj):
+def post_processing_tree(adj):
     import networkx as nx
-    deg = np.sum(adj, axis = 1)
-    norm_adj = 1 / np.sqrt(deg)[:,None] * adj * 1 / np.sqrt(deg)[None,:]
-    G = nx.from_numpy_matrix(norm_adj, create_using=nx.Graph)
+    # deg = np.sum(adj, axis = 1)
+    # norm_adj = 1 / np.sqrt(deg)[:,None] * adj * 1 / np.sqrt(deg)[None,:]
+    G = nx.from_numpy_matrix(adj, create_using=nx.Graph)
     T = nx.maximum_spanning_tree(G, weight = 'weight', algorithm = 'kruskal')
     T = nx.to_numpy_matrix(T)
     T = np.where(T!= 0, 1, 0)
     return T
+
+def post_processing_pruning(adj_groups, diff_thd = 50):
+    adj = adj_groups.copy()
+    for i in range(adj.shape[0]):
+        neighs = np.where(adj[i,:] > 0.1)[0]
+        diff = np.zeros(neighs.shape)
+        for idx, j in enumerate(neighs):
+            diff[idx] = np.sum(adj[i,neighs] - adj[i,j])
+        diff = diff < diff_thd
+        adj[i,neighs] = diff
+    
+    adj = adj > 0.1
+    return adj
 
 def get_igraph_from_adjacency(adjacency, directed=None):
     """Get igraph graph from adjacency matrix."""
@@ -257,7 +306,38 @@ def cell_clust_assign(seg, X, groups):
 
     return cell_bb
 
-def backbone_finding(data, n_randwk = 300, window_size = 20, step_size = 10, n_neighs = 30, resolution = 0.3):
+def mean_pt(groups, seg, y):
+    segment = seg['segments']
+    pt = np.array([np.mean(y[segment[i]]) for i in range(segment.shape[0])])
+    group_pt = []
+    for group in np.unique(groups):
+        indices = np.where(groups == group)[0]
+        group_pt.append(np.mean(pt[indices]))
+    return np.array(group_pt)
+
+
+def pt_mst(adj, mean_pt):
+    source = np.argmin(mean_pt)
+    cover = np.array([False for i in range(adj.shape[0])])
+    cover[source] = True
+    T = np.zeros_like(adj)
+    while not np.all(cover):
+        mst_indices = np.where(cover == True)[0]
+        candidates = np.zeros_like(mst_indices)
+        pool = np.zeros_like(mst_indices)
+        for idx, curr in enumerate(mst_indices):
+            candidate = [x for x in range(adj.shape[0]) if adj[curr, x]!=0 and cover[x] == False and mean_pt[x] - mean_pt[curr] >= 0]
+            if candidate != []:
+                candidate = candidate[np.argmax(adj[curr, candidate])]
+                candidates[idx] = candidate
+                pool[idx] = adj[curr, candidate]
+        candidate = candidates[np.argmax(pool)]
+        cover[candidate] = True
+        T[mst_indices[np.argmax(pool)], candidate] = T[candidate, mst_indices[np.argmax(pool)]] = True
+    return T
+
+
+def backbone_finding(data, n_randwk = 300, window_size = 20, step_size = 10, n_neighs = 30, resolution = 0.3, style = 'tree', threshold = 0):
     X = data.x
     y = data.y.squeeze()
     if isinstance(X, torch.Tensor):
@@ -272,7 +352,14 @@ def backbone_finding(data, n_randwk = 300, window_size = 20, step_size = 10, n_n
     groups, n_clusters = leiden(conn, resolution = resolution, n_iterations = -1)
     print('number of clusters: ', int(np.max(groups))+1)
     adj_groups = retrieve_conn(seg, groups)
-    T = post_processing_graph(adj_groups)
+    group_pt = mean_pt(groups, seg, y)
+    if style == 'tree':
+        T = pt_mst(adj_groups, group_pt)
+        # T = post_processing_tree(adj_groups)
+    elif style == 'pruning':
+        T = post_processing_pruning(adj_groups, diff_thd=threshold)
+    else:
+        raise ValueError("only between tree and pruning")
     cell_bb = cell_clust_assign(seg = seg, X = X, groups = groups)
     
     results = {'seg': seg, 'seg_groups': groups, 'cell_groups': cell_bb, 'mst': T, 'origin_conn': adj_groups, 'X': X, 'y': y}
