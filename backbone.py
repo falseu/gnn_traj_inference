@@ -1,4 +1,6 @@
 import numpy as np
+import torch
+import utils
 
 def random_walk(X, y, t_max = 10000, i_max = 10, k = 10):
     from sklearn.neighbors import kneighbors_graph
@@ -52,28 +54,26 @@ def segmentation(random_wk, node_features, y, cell_backbone = None, wind_size = 
         for idx in segments[seg,:]:
             features[-1].extend(node_features[idx,:])
             pseudo_time[-1].append(y[idx])
-            if cell_backbone:
-                bbs[-1].append(cell_backbone[idx])
-        unique, counts = np.unique(np.array(bbs[-1]), return_counts=True)
-        # print("seg: ", seg, ", bbs[-1]: ", unique[np.argmax(counts)], ", bbs: ", bbs[-1])
-        bbs[-1] = unique[np.argmax(counts)]    
+        #     if cell_backbone:
+        #         bbs[-1].append(cell_backbone[idx])
+        # unique, counts = np.unique(np.array(bbs[-1]), return_counts=True)
+        # # print("seg: ", seg, ", bbs[-1]: ", unique[np.argmax(counts)], ", bbs: ", bbs[-1])
+        # bbs[-1] = unique[np.argmax(counts)]    
     
+    
+    block_diagonal = []
     adj = np.zeros((segments.shape[0],segments.shape[0]))
 
-    for curr_seg in range(segments.shape[0]):
-        rwk_i = belongings[curr_seg]
-        indices = np.where(belongings.squeeze() == rwk_i)[0]
-        if curr_seg == 0:
-            adj[curr_seg, curr_seg + 1] = 1
-        elif curr_seg == segments.shape[0] - 1:
-            adj[curr_seg, curr_seg - 1] = 1
-        else:
-            adj[curr_seg, [curr_seg - 1, curr_seg + 1]] = 1       
+    for i in random_wk.keys():
+        indices = np.where(belongings.squeeze() == i)[0]
+        adj_temp = np.eye(indices.shape[0], indices.shape[0])
+        adj[indices[0]:indices[-1], indices[0]:indices[-1]+1] += adj_temp[1:, :]
+        adj[indices[1]:indices[-1]+1, indices[0]:indices[-1]+1] += adj_temp[0:-1, :]    
     
-    if cell_backbone:
-        return {"rwk": belongings, "segments": segments, "seg_features": np.array(features), "adjacency": adj, "seg_backbone": np.array(bbs), "pseudo_time": np.array(pseudo_time)}
-    else:
-        return {"rwk": belongings, "segments": segments, "adjacency": adj, "seg_features": np.array(features), "pseudo_time": np.array(pseudo_time)}
+    # if cell_backbone:
+    #     return {"rwk": belongings, "segments": segments, "seg_features": np.array(features), "adjacency": adj, "seg_backbone": np.array(bbs), "pseudo_time": np.array(pseudo_time)}
+    # else:
+    return {"rwk": belongings, "segments": segments, "adjacency": adj, "seg_features": np.array(features), "pseudo_time": np.array(pseudo_time)}
     
 def retrieve_conn_eigen_pool(seg, groups):
     """\
@@ -218,3 +218,71 @@ def leiden(conn, resolution = 0.05, random_state = 0, n_iterations = -1):
     
     print('finished')
     return groups, n_clusters
+
+
+
+def cell_clust_assign(seg, X, groups):
+    segments = seg['segments']
+    groups_cell = np.zeros((1, X.shape[0]))
+    groups_cell = [[] for cell in range(X.shape[0])]
+    counts = [[] for cell in range(X.shape[0])]
+    count_group = [[] for group in np.unique(groups)]
+
+    for seg_id in range(segments.shape[0]):
+        # cell passed in the segment
+        rand_wk = segments[seg_id]
+        # group of the segment
+        group_id = groups[seg_id]
+        # the cells included in the group
+        count_group[group_id].extend(rand_wk)
+
+        # cell ids in this random walk
+        for cell_id in rand_wk:
+            if group_id not in groups_cell[cell_id]:
+                # append the group into the list of the cell
+                groups_cell[cell_id].append(group_id)
+                # append one count for the group
+                counts[cell_id].append(1)
+            else:
+                # add one count for corresponding group
+                counts[cell_id][int(np.where(groups_cell[cell_id] == group_id)[0])] += 1
+        
+    # cell_bb store the backbone id of each cell
+    cell_bb = np.zeros(X.shape[0])
+    for cell_id in range(X.shape[0]):
+        if len(groups_cell[cell_id]) == 0:
+            cell_bb[cell_id] = np.inf
+        else:
+            cell_bb[cell_id] = groups_cell[cell_id][np.argmax(counts[cell_id])]
+
+    # make sure that each backbone cluster has at least one cell assigned to it
+    for group in np.unique(groups):
+        indices = np.where(cell_bb == group)[0]
+        if indices.shape[0] == 0:
+            print("empty cluster: ", group)
+            unique_cells, count_cells = np.unique(count_group[group], return_counts=True)
+            unique_cells = unique_cells[np.argsort(count_cells)[::-1][:10]]
+            cell_bb[unique_cells] = group
+
+    return cell_bb
+
+def backbone_finding(data, n_randwk = 300, window_size = 20, step_size = 10, n_neighs = 30, resolution = 0.3):
+    X = data.x
+    y = data.y.squeeze()
+    if isinstance(X, torch.Tensor):
+        X = X.numpy()
+    if isinstance(y, torch.Tensor):
+        y = y.numpy()
+    X_pca = utils.pca_op(X, n_comps=30, standardize=False)
+    randwk = random_walk(X_pca, y, t_max = 10000, i_max = n_randwk, k = 5)
+    seg = segmentation(randwk, X_pca[:,:4], cell_backbone=None, wind_size = window_size, step = step_size, y = y)
+    seg_pca = utils.pca_op(seg['seg_features'], n_comps=30, standardize=False)
+    conn, G = nearest_neighbor(seg_pca, k = n_neighs)
+    groups, n_clusters = leiden(conn, resolution = resolution, n_iterations = -1)
+    print('number of clusters: ', int(np.max(groups))+1)
+    adj_groups = retrieve_conn(seg, groups)
+    T = post_processing_graph(adj_groups)
+    cell_bb = cell_clust_assign(seg = seg, X = X, groups = groups)
+    
+    results = {'seg': seg, 'seg_groups': groups, 'cell_groups': cell_bb, 'mst': T, 'origin_conn': adj_groups}
+    return results
