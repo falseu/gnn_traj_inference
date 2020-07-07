@@ -284,5 +284,93 @@ def backbone_finding(data, n_randwk = 300, window_size = 20, step_size = 10, n_n
     T = post_processing_graph(adj_groups)
     cell_bb = cell_clust_assign(seg = seg, X = X, groups = groups)
     
-    results = {'seg': seg, 'seg_groups': groups, 'cell_groups': cell_bb, 'mst': T, 'origin_conn': adj_groups}
+    results = {'seg': seg, 'seg_groups': groups, 'cell_groups': cell_bb, 'mst': T, 'origin_conn': adj_groups, 'X': X, 'y': y}
     return results
+
+
+def plot_backbone(results, version = 'segment', figsize = (20,5)):
+    import matplotlib.pyplot as plt
+    groups = results['seg_groups']
+    cell_bb = results['cell_groups']
+    T = results['mst']
+    adj_groups = results['origin_conn']
+    seg = results['seg']
+    X = results['X']
+    y = results['y']
+
+    fig = plt.figure(figsize = figsize)
+    ax1, ax2 = fig.subplots(1,2)
+    cmap = plt.get_cmap('tab20')
+    mean_cluster = [[] for x in range(adj_groups.shape[0])]
+
+    conn = adj_groups > 0.0001
+
+    if version == 'segment':
+        import umap
+        
+        Umap = umap.UMAP(n_components = 2, n_neighbors=30)
+        X_umap = Umap.fit_transform(np.array(seg['seg_features']))
+        
+        cmap = plt.get_cmap('tab20')
+        for i, cat in enumerate(np.unique(groups)):
+            idx = np.where(groups == cat)[0]
+            cluster = ax1.scatter(X_umap[idx,0], X_umap[idx,1], color = cmap(i), cmap = 'tab20')
+            cluster.set_label("group"+str(cat))
+
+            cluster = ax2.scatter(X_umap[idx,0], X_umap[idx,1], color = cmap(i), cmap = 'tab20')
+            cluster.set_label("group"+str(cat))
+            mean_cluster[int(cat)] = [np.mean(X_umap[idx,0]), np.mean(X_umap[idx,1])]    
+        
+        conn = adj_groups > 0.0001
+
+        handles, labels = ax2.get_legend_handles_labels()
+        fig.legend(handles, labels, loc='upper right')
+
+        for i in range(conn.shape[0]):
+            for j in range(conn.shape[1]):
+                if conn[i,j] != 0:
+                    ax1.plot([mean_cluster[i][0], mean_cluster[j][0]], [mean_cluster[i][1], mean_cluster[j][1]], 'r-')
+        
+
+        conn = T
+        for i in range(adj_groups.shape[0]):
+            for j in range(adj_groups.shape[1]):
+                if conn[i,j] != 0:
+                    ax2.plot([mean_cluster[i][0], mean_cluster[j][0]], [mean_cluster[i][1], mean_cluster[j][1]], 'r-')
+
+
+    elif version == 'cell':
+        X_pca = utils.pca_op(X, n_comps=30, standardize=False)
+
+        ax1.scatter(X_pca[:,0], X_pca[:,1], color = 'gray')
+        ax2.scatter(X_pca[:,0], X_pca[:,1], color = 'gray')
+
+        mean_cluster = [[] for x in range(adj_groups.shape[0])]
+        for i, cat in enumerate(np.unique(cell_bb)):
+            idx = np.where(cell_bb == cat)[0]
+            cluster = ax1.scatter(X_pca[idx,0], X_pca[idx,1], color = cmap(i), cmap = 'tab20')
+            cluster.set_label("group"+str(cat))
+
+            cluster = ax2.scatter(X_pca[idx,0], X_pca[idx,1], color = cmap(i), cmap = 'tab20')
+            
+            cluster.set_label("group"+str(cat))
+            if cat != np.inf:
+                mean_cluster[int(cat)] = [np.mean(X_pca[idx,0]), np.mean(X_pca[idx,1])]    
+  
+        # ax1.legend()
+        # ax2.legend()
+        handles, labels = ax2.get_legend_handles_labels()
+        fig.legend(handles, labels, loc='upper right')
+
+
+        for i in range(conn.shape[0]):
+            for j in range(conn.shape[1]):
+                if conn[i,j] != 0:
+                    ax1.plot([mean_cluster[i][0], mean_cluster[j][0]], [mean_cluster[i][1], mean_cluster[j][1]], 'r-')
+        
+
+        conn = T
+        for i in range(adj_groups.shape[0]):
+            for j in range(adj_groups.shape[1]):
+                if conn[i,j] != 0:
+                    ax2.plot([mean_cluster[i][0], mean_cluster[j][0]], [mean_cluster[i][1], mean_cluster[j][1]], 'r-')
