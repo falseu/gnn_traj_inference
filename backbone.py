@@ -127,3 +127,94 @@ def post_processing_graph(adj):
     T = nx.to_numpy_matrix(T)
     T = np.where(T!= 0, 1, 0)
     return T
+
+def get_igraph_from_adjacency(adjacency, directed=None):
+    """Get igraph graph from adjacency matrix."""
+    import igraph as ig
+    sources, targets = adjacency.nonzero()
+    weights = adjacency[sources, targets]
+    if isinstance(weights, np.matrix):
+        weights = weights.A1
+    g = ig.Graph(directed=directed)
+    g.add_vertices(adjacency.shape[0])  # this adds adjacency.shape[0] vertices
+    g.add_edges(list(zip(sources, targets)))
+    try:
+        g.es['weight'] = weights
+    except:
+        pass
+    if g.vcount() != adjacency.shape[0]:
+        print( 'Your adjacency matrix contained redundant nodes.' )
+    return g
+
+    
+def nearest_neighbor(features, k = 15, sigma = 3):
+    from sklearn.neighbors import kneighbors_graph, NearestNeighbors
+    from sklearn.metrics import pairwise_distances
+    import random
+    import networkx as nx
+    from umap.umap_ import fuzzy_simplicial_set
+    from scipy.sparse import coo_matrix
+
+
+    directed_conn = kneighbors_graph(features, n_neighbors = k, mode='connectivity', include_self=False).toarray()
+    conn = directed_conn + directed_conn.T
+    dist = pairwise_distances(features, metric = "euclidean", n_jobs = 4)
+
+    conn[conn.nonzero()[0],conn.nonzero()[1]] = np.exp(-0.5 / sigma * dist[conn.nonzero()[0],conn.nonzero()[1]] ** 2)
+    G = nx.from_numpy_matrix(conn, create_using=nx.Graph)
+
+    nbrs = NearestNeighbors(n_neighbors = k, algorithm = 'auto').fit(features)
+    knn_dists, knn_indices = nbrs.kneighbors(features)
+
+    X = coo_matrix(([], ([], [])), shape=(features.shape[0], 1))
+
+    connectivities = fuzzy_simplicial_set(
+        X,
+        n_neighbors = k,
+        metric = None,
+        random_state = None,
+        knn_indices=knn_indices,
+        knn_dists=knn_dists,
+        set_op_mix_ratio=1.0,
+        local_connectivity=1.0,
+    )
+
+    if isinstance(connectivities, tuple):
+        # In umap-learn 0.4, this returns (result, sigmas, rhos)
+        connectivities = connectivities[0]
+    connectivities = connectivities.toarray()
+    print(np.allclose(connectivities, connectivities.T))
+    G = nx.from_numpy_matrix(connectivities, create_using=nx.Graph)
+    return connectivities, G
+
+def leiden(conn, resolution = 0.05, random_state = 0, n_iterations = -1):
+    try:
+        import leidenalg as la
+    except ImportError:
+        raise ImportError(
+            'Please install the leiden algorithm: `conda install -c conda-forge leidenalg` or `pip3 install leidenalg`.'
+        )
+        
+    start = print('running Leiden clustering')
+
+    partition_kwargs = {}
+    # # convert adjacency matrix into igraph
+    g = get_igraph_from_adjacency(conn)
+    
+    # Parameter setting
+    partition_type = la.RBConfigurationVertexPartition
+    partition_kwargs['weights'] = np.array(g.es['weight']).astype(np.float64)     
+    partition_kwargs['n_iterations'] = n_iterations
+    partition_kwargs['seed'] = random_state
+    partition_kwargs['resolution_parameter'] = resolution
+        
+    # Leiden algorithm
+    # part = la.find_partition(g, la.CPMVertexPartition, **partition_kwargs)
+    part = la.find_partition(g, partition_type, **partition_kwargs)
+    # groups store the length |V| array, the integer in each element(node) denote the cluster it belong
+    groups = np.array(part.membership)
+
+    n_clusters = int(np.max(groups) + 1)
+    
+    print('finished')
+    return groups, n_clusters
