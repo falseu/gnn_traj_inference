@@ -155,14 +155,6 @@ def nearest_neighbor(features, k = 15, sigma = 3):
     from umap.umap_ import fuzzy_simplicial_set
     from scipy.sparse import coo_matrix
 
-
-    directed_conn = kneighbors_graph(features, n_neighbors = k, mode='connectivity', include_self=False).toarray()
-    conn = directed_conn + directed_conn.T
-    dist = pairwise_distances(features, metric = "euclidean", n_jobs = 4)
-
-    conn[conn.nonzero()[0],conn.nonzero()[1]] = np.exp(-0.5 / sigma * dist[conn.nonzero()[0],conn.nonzero()[1]] ** 2)
-    G = nx.from_numpy_matrix(conn, create_using=nx.Graph)
-
     nbrs = NearestNeighbors(n_neighbors = k, algorithm = 'auto').fit(features)
     knn_dists, knn_indices = nbrs.kneighbors(features)
 
@@ -183,7 +175,6 @@ def nearest_neighbor(features, k = 15, sigma = 3):
         # In umap-learn 0.4, this returns (result, sigmas, rhos)
         connectivities = connectivities[0]
     connectivities = connectivities.toarray()
-    print(np.allclose(connectivities, connectivities.T))
     G = nx.from_numpy_matrix(connectivities, create_using=nx.Graph)
     return connectivities, G
 
