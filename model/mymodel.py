@@ -92,13 +92,16 @@ class GraphSAGEModel(torch.nn.Module):
 
 
 class FCModel(torch.nn.Module):
-    def __init__(self, in_channels, device):
+    def __init__(self, in_channels, device, hidden1=128, hidden2=64, dropout1=0.5, dropout2=0.2):
         super(FCModel, self).__init__()
         self.device = device
 
-        self.lin1 = nn.Linear(in_channels, 64)
-        self.lin2 = nn.Linear(64, 64)
-        self.lin3 = nn.Linear(64, 1)
+        self.lin1 = nn.Linear(in_channels, hidden1)
+        self.lin2 = nn.Linear(hidden1, hidden2)
+        self.lin3 = nn.Linear(hidden2, 1)
+
+        self.p1 = dropout1
+        self.p2 = dropout2
     
     def reset_parameters(self):
         self.lin1.reset_parameters()
@@ -108,8 +111,8 @@ class FCModel(torch.nn.Module):
     def forward(self, data):
         x = data.x.float()
 
-        x = F.relu(self.lin1(x))
-        x = F.relu(self.lin2(x))
+        x = F.relu(F.dropout(self.lin1(x), p=self.p1))
+        x = F.relu(F.dropout(self.lin2(x), p=self.p2))
         x = F.sigmoid(self.lin3(x))
         return x, None, None
 
@@ -157,21 +160,20 @@ class veloModel(torch.nn.Module):
         return x, node_embed, adj
 
 class DiffusionModel(torch.nn.Module):
-    def __init__(self, in_features, device, hidden1 = 128, hidden2 = 64, max_diffusion = 10, include_reversed = False):
+    def __init__(self, in_features, device, hidden1 = 128, hidden2 = 64, max_diffusion = 10, include_reversed = False, dropout1 = 0.5, dropout2 = 0.2):
         super(DiffusionModel, self).__init__()
         self.device = device
-        self.max_diffusion = max_diffusion
-        self.h1 = hidden1
-        self.h2 = hidden2
-        self.include_reversed = include_reversed
 
-        self.conv1 = GraphDiffusion(in_features = in_features, out_features = self.h1, max_diffusion = self.max_diffusion, include_reversed = self.include_reversed)
-        self.conv2 = GraphDiffusion(in_features = self.h1, out_features = self.h2, max_diffusion = self.max_diffusion, include_reversed = self.include_reversed)
+        self.conv1 = GraphDiffusion(in_features = in_features, out_features = hidden1, max_diffusion = max_diffusion, include_reversed = include_reversed)
+        self.conv2 = GraphDiffusion(in_features = hidden1, out_features = hidden2, max_diffusion = max_diffusion, include_reversed = include_reversed)
 
         # self.norm1 = nn.BatchNorm1d(self.h1)
         # self.norm2 = nn.BatchNorm1d(self.h2)
 
-        self.lin = nn.Linear(self.h2, 1)
+        self.lin = nn.Linear(hidden2, 1)
+
+        self.p1 = dropout1
+        self.p2 = dropout2
 
     def reset_parameters(self):
         self.conv1.reset_parameters()
@@ -191,9 +193,9 @@ class DiffusionModel(torch.nn.Module):
         adj = adj.to(self.device)
 
         x = self.conv1(x, adj, self.device).squeeze()
-        x = F.relu(F.dropout(x, p=0.5))
+        x = F.relu(F.dropout(x, p=self.p1))
         x = self.conv2(x, adj, self.device).squeeze()
-        node_embed = F.relu(F.dropout(x, p=0.2))
+        node_embed = F.relu(F.dropout(x, p=self.p2))
         output = F.sigmoid(self.lin(node_embed))
 
         return output, node_embed, adj
