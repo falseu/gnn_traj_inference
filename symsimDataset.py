@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import pandas as pd
 import anndata
 import scvelo as scv
-import scanpy
+import scanpy as sc
 
 from scipy.sparse import csr_matrix
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
@@ -85,6 +85,10 @@ class SymsimBifur(InMemoryDataset):
             scv.tl.velocity(adata, mode='stochastic')            
             velo_matrix = adata.layers["velocity"].copy()
 
+            adata.uns['iroot'] = 0
+            sc.tl.diffmap(adata)
+            sc.tl.dpt(adata)
+
             X_spliced = adata.X.toarray()
 
             pipeline = Pipeline([('pca', PCA(n_components=80, svd_solver='arpack'))])
@@ -124,7 +128,7 @@ class SymsimBifur(InMemoryDataset):
             adj = calculate_adj(conn, X_pca, velo_pca)
                 
             assert adata.n_vars == 300
-            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
+            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, adata=adata)
 
             data_list.append(data)
 
@@ -185,6 +189,10 @@ class SymsimTree(InMemoryDataset):
             scv.tl.velocity(adata, mode='stochastic')            
             velo_matrix = adata.layers["velocity"].copy()
 
+            adata.uns['iroot'] = 0
+            sc.tl.diffmap(adata)
+            sc.tl.dpt(adata)
+
             X_spliced = adata.X.toarray()
 
             pipeline = Pipeline([('pca', PCA(n_components=80, svd_solver='arpack'))])
@@ -227,7 +235,7 @@ class SymsimTree(InMemoryDataset):
 
             adj = calculate_adj(conn, X_pca, velo_pca)
             
-            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, bbs = bbs)
+            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, bbs = bbs, adata = adata)
 
             assert adata.n_vars == 300
             data_list.append(data)
@@ -285,7 +293,12 @@ class SymsimBranch(InMemoryDataset):
 
                 # compute velocity
                 scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
-                scv.tl.velocity(adata, mode='stochastic')            
+                scv.tl.velocity(adata, mode='stochastic')    
+
+                adata.uns['iroot'] = 0
+                sc.tl.diffmap(adata)
+                sc.tl.dpt(adata)
+        
                 velo_matrix = adata.layers["velocity"].copy()
 
                 X_spliced = adata.X.toarray()
@@ -328,7 +341,7 @@ class SymsimBranch(InMemoryDataset):
 
                 adj = calculate_adj(conn, X_pca, velo_pca)
                 
-                data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
+                data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, adata = adata)
                 data_list.append(data)
             assert adata.n_vars == 300
         data, slices = self.collate(data_list)
@@ -385,6 +398,11 @@ class SymsimLinear(InMemoryDataset):
             scv.tl.velocity(adata, mode='stochastic')            
             velo_matrix = adata.layers["velocity"].copy()
 
+            adata.uns['iroot'] = 0
+            sc.tl.diffmap(adata)
+            sc.tl.dpt(adata)
+
+
             X_spliced = adata.X.toarray()
 
             pipeline = Pipeline([('pca', PCA(n_components=80, svd_solver='arpack'))])
@@ -423,7 +441,7 @@ class SymsimLinear(InMemoryDataset):
 
             adj = calculate_adj(conn, X_pca, velo_pca)
             
-            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
+            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, adata = adata)
             data_list.append(data)
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])       
@@ -475,7 +493,12 @@ class SymsimCycle(InMemoryDataset):
 
             # compute velocity
             scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
-            scv.tl.velocity(adata, mode='stochastic')            
+            scv.tl.velocity(adata, mode='stochastic')
+
+            adata.uns['iroot'] = 0
+            sc.tl.diffmap(adata)
+            sc.tl.dpt(adata)
+            
             velo_matrix = adata.layers["velocity"].copy()
 
             # bias = np.concatenate((np.exp(-0.5*np.linspace(0,3,25)**2)[::-1],np.ones(velo_matrix.shape[0]-50),np.exp(-0.5*np.linspace(0,3,25)**2)), axis = None)[:,None]
@@ -519,7 +542,7 @@ class SymsimCycle(InMemoryDataset):
 
             adj = calculate_adj(conn, X_pca, velo_pca)
             
-            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v)
+            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, adata = adata)
             data_list.append(data)
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])       

@@ -168,8 +168,8 @@ class DiffusionModel(torch.nn.Module):
         self.conv1 = GraphDiffusion(in_features = in_features, out_features = self.h1, max_diffusion = self.max_diffusion, include_reversed = self.include_reversed)
         self.conv2 = GraphDiffusion(in_features = self.h1, out_features = self.h2, max_diffusion = self.max_diffusion, include_reversed = self.include_reversed)
 
-        self.norm1 = nn.BatchNorm1d(self.h1)
-        self.norm2 = nn.BatchNorm1d(self.h2)
+        # self.norm1 = nn.BatchNorm1d(self.h1)
+        # self.norm2 = nn.BatchNorm1d(self.h2)
 
         self.lin = nn.Linear(self.h2, 1)
 
@@ -191,9 +191,9 @@ class DiffusionModel(torch.nn.Module):
         adj = adj.to(self.device)
 
         x = self.conv1(x, adj, self.device).squeeze()
-        x = F.relu(self.norm1(x))
+        x = F.relu(F.dropout(x, p=0.5))
         x = self.conv2(x, adj, self.device).squeeze()
-        node_embed = F.relu(self.norm2(x))
+        node_embed = F.relu(F.dropout(x, p=0.2))
         output = F.sigmoid(self.lin(node_embed))
 
         return output, node_embed, adj
