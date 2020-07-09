@@ -5,19 +5,19 @@ from torch_geometric.data import Data
 import pandas as pd
 import anndata
 import scvelo as scv
-import scanpy
+import scanpy as sc
 
 from scipy.sparse import csr_matrix
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import kneighbors_graph
-
+from utils import technological_noise, calculate_adj
 
 
 class RnaVeloDataset(InMemoryDataset):
 
-    def __init__(self, root, transform=None, pre_transform=None):
+    def __init__(self, root='data/', transform=None, pre_transform=None):
         super(RnaVeloDataset, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
         self.root = root
@@ -28,31 +28,20 @@ class RnaVeloDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return ['RnaVelo.dataset']
+        return ['Dyngen.dataset']
 
     def download(self):
         pass
 
     def process(self):
-        # backbones = ["bifurcating", "binary_tree", "cycle", "linear", "trifurcating"]
-        backbones = ["bifurcating", "linear", "binary_tree", "trifurcating"]
-        seed = [1]
-        trans_rate = [3, 5, 10]
-        num_cells = [100, 150, 200, 250, 300]
+    
+        num_cells = [300 + 10 * i for i in range(11)]
+        root = 'data/dyngen/'
 
-        # seed = [6]
-        # trans_rate = [1]
-        # split_rate = [1]
-        # num_cells=[3000]
-
-        root = '5_backbone/'
-        
-        combined = [(bb, tr, nc) for bb in backbones for tr in trans_rate for nc in num_cells]
         data_list = []
 
-        for item in combined:
-            bb, tr, nc = item
-            path = root + bb + "_" + str(tr) + "_1_1_" + str(nc)
+        for nc in num_cells:
+            path = root + 'bifurcating_1_1_1_' + str(nc)
             print(path)
 
             df = pd.read_csv(path + "_unspliced.csv")
@@ -74,43 +63,51 @@ class RnaVeloDataset(InMemoryDataset):
                                 spliced = csr_matrix(X_spliced)
                             ))
 
-            # dimension reduction
-            # X_concat = np.concatenate((X_spliced,X_unspliced),axis=1)
-            # pca = PCA(n_components=10, svd_solver='arpack')
-            # pipeline = Pipeline([('normalization', Normalizer()), ('pca', PCA(n_components=10, svd_solver='arpack'))])
-            # X_pca_ori = pipeline.fit_transform(X_spliced)
-
-            scv.pp.filter_genes_dispersion(adata, n_top_genes = 72)
-            adata = adata[:,:70]
-            scv.pp.normalize_per_cell(adata)
-            scv.pp.log1p(adata)
+            scv.pp.filter_and_normalize(adata, min_shared_counts=0, n_top_genes=305)
+            adata = adata[:,:300]
 
             # compute velocity
-            # scv.pp.filter_and_normalize(adata, n_top_genes=50)
             scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
-            # scv.tl.recover_dynamics(adata)
-            scv.tl.velocity(adata)
+            scv.tl.velocity(adata, mode='stochastic')            
             velo_matrix = adata.layers["velocity"].copy()
-            # genes_subset = ~np.isnan(velo_matrix).any(axis=0)
-            # adata._inplace_subset_var(genes_subset)
-            # velo_matrix = adata.layers["velocity"].copy()
+
+            adata2 = adata.copy()
+            # dpt
+            adata.uns['iroot'] = 0
+            sc.tl.diffmap(adata)
+            sc.tl.dpt(adata)
+            #velo-dpt
+            scv.tl.velocity_graph(adata2)
+            scv.tl.velocity_pseudotime(adata2)
+            y_dpt = adata.obs['dpt_pseudotime'].to_numpy()
+            y_vdpt = adata2.obs['velocity_pseudotime'].to_numpy()
+
             X_spliced = adata.X.toarray()
-            X_pca_ori = X_spliced
-            print(X_pca_ori.shape)
+
+            pipeline = Pipeline([('pca', PCA(n_components=80, svd_solver='arpack'))])
+            X_pca = pipeline.fit_transform(X_spliced)
 
             # X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
+            X_pre = X_spliced + velo_matrix
 
-            # X_pca_pre = pipeline.transform(X_pre)
-            # velo_pca = X_pca_pre - X_pca_ori
+            X_pca_pre = pipeline.transform(X_pre)
+            velo_pca = X_pca_pre - X_pca
 
-            directed_conn = kneighbors_graph(X_pca_ori, n_neighbors=5, mode='connectivity', include_self=False).toarray()
+            directed_conn = kneighbors_graph(X_pca, n_neighbors=10, mode='connectivity', include_self=False).toarray()
             conn = directed_conn + directed_conn.T
             conn[conn.nonzero()[0],conn.nonzero()[1]] = 1
-            
-            x = torch.FloatTensor(X_pca_ori.copy())
+
+            # X_spliced is original, X_pca is after pca
+            x = X_spliced.copy()
+            x = StandardScaler().fit_transform(x)
+            x = torch.FloatTensor(x)
+
+            # X_pca_pre is after pca
+            v = StandardScaler().fit_transform(X_pre)
+            v = torch.FloatTensor(v)
 
             # Simulation time label
-            y = X_obs['sim_time'].to_numpy().reshape((-1, 1))
+            y = adata.obs['sim_time'].to_numpy().reshape((-1, 1))
             scaler = MinMaxScaler((0, 1))
             scaler.fit(y)
             y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
@@ -121,37 +118,11 @@ class RnaVeloDataset(InMemoryDataset):
             edge_index = np.array(np.where(conn == 1))
             edge_index = torch.LongTensor(edge_index)
 
-            adj = np.full_like(conn, np.nan)
-            for i in range(conn.shape[0]):
-                # indices = conn[i,:].nonzero()[0]
-                # diff = X_pca_ori[indices,:] - X_pca_ori[i,:]
-                # distance = np.linalg.norm(diff, axis=1, ord=2)[:,None]
-                # penalty = np.matmul(diff, velo_pca[i,:, None])/\
-                # (np.linalg.norm(velo_pca[i,:], ord=2) * distance)
-                # penalty = np.nan_to_num(penalty, 0)
-                # adj[i][indices] = penalty.squeeze()
-
-                # self loop
-                adj[i][i] = 0
+            adj = calculate_adj(conn, X_pca, velo_pca)
                 
-                # weights = np.full((conn.shape[1]), np.inf)
-                # weights[indices] = penalty.squeeze()
-                # # Self loop
-                # weights[i] = 1
-                # adj = np.stack((adj, weights))
-
-                indices = conn[i,:].nonzero()[0]
-                for k in indices:
-                    diff = X_pca_ori[i, :] - X_pca_ori[k, :] # 1,d
-                    distance = np.linalg.norm(diff, ord=2) #1
-                    penalty = np.dot(diff, velo_matrix[k, :, None]) / np.linalg.norm(velo_matrix[k,:], ord=2) / distance
-                    penalty = 0 if np.isnan(penalty) else penalty
-                    adj[i][k] = penalty
-                
-            # adj = torch.FloatTensor(adj)
+            assert adata.n_vars == 300
             
-            data = Data(x=x, edge_index=edge_index, y=y, adj=adj)
-            data.adata = adata
+            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, y_dpt = y_dpt, y_vdpt = y_vdpt)
             data_list.append(data)
 
         data, slices = self.collate(data_list)
