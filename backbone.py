@@ -29,44 +29,6 @@ def random_walk(X, y, t_max = 10000, i_max = 10, k = 10):
                 break
     return randwk
 
-"""
-def segmentation(random_wk, node_features, y, wind_size = 10, step = 2):
-    belongings = []
-    segments = []
-    features = []
-    bbs = []
-    pseudo_time = []
-    
-    for i in random_wk.keys():
-        rwk_i = random_wk[i]
-        curr_step = 0
-        while(curr_step+wind_size < len(rwk_i)):
-            segments.append(rwk_i[curr_step:curr_step+wind_size])
-            belongings.append([i])
-            curr_step += step
-    
-    segments = np.array(segments)
-    belongings = np.array(belongings)
-
-    for seg in range(segments.shape[0]):
-        features.append([])
-        bbs.append([])
-        pseudo_time.append([])
-        for idx in segments[seg,:]:
-            features[-1].extend(node_features[idx,:])
-            pseudo_time[-1].append(y[idx])      
-    
-    block_diagonal = []
-    adj = np.zeros((segments.shape[0],segments.shape[0]))
-
-    for i in random_wk.keys():
-        indices = np.where(belongings.squeeze() == i)[0]
-        adj_temp = np.eye(indices.shape[0], indices.shape[0])
-        adj[indices[0]:indices[-1], indices[0]:indices[-1]+1] += adj_temp[1:, :]
-        adj[indices[1]:indices[-1]+1, indices[0]:indices[-1]+1] += adj_temp[0:-1, :]    
-    
-    return {"rwk": belongings, "segments": segments, "adjacency": adj, "seg_features": np.array(features), "pseudo_time": np.array(pseudo_time)}
-"""    
 def segmentation(random_wk, node_features, y, cell_backbone = None, wind_size = 10, step = 2):
     belongings = []
     segments = []
@@ -82,7 +44,7 @@ def segmentation(random_wk, node_features, y, cell_backbone = None, wind_size = 
         if len(rwk_i) < wind_size:
             del random_wk[i]
         else:
-            while(curr_step+wind_size < len(rwk_i)):
+            while(curr_step+wind_size <= len(rwk_i)):
                 segments.append(rwk_i[curr_step:curr_step+wind_size])
                 belongings.append([i])
                 curr_step += step
@@ -105,11 +67,15 @@ def segmentation(random_wk, node_features, y, cell_backbone = None, wind_size = 
     for i in random_wk.keys():
         indices = np.where(belongings.squeeze() == i)[0]
         adj_temp = np.eye(indices.shape[0], indices.shape[0])
-        adj[indices[0]:indices[-1], indices[0]:indices[-1]+1] += adj_temp[1:, :]
-        adj[indices[1]:indices[-1]+1, indices[0]:indices[-1]+1] += adj_temp[0:-1, :] 
+        if adj_temp.shape[0] == 1:
+            adj[indices, indices] = 0
+        else:
+            adj[indices[0]:indices[-1], indices[0]:indices[-1]+1] += adj_temp[1:, :]
+            adj[indices[1]:indices[-1]+1, indices[0]:indices[-1]+1] += adj_temp[0:-1, :] 
+
 
     return {"rwk": belongings, "segments": segments, "adjacency": adj, "seg_features": np.array(features), "pseudo_time": np.array(pseudo_time)}
-    
+
 
 def retrieve_conn_eigen_pool(seg, groups):
     """\
@@ -296,12 +262,14 @@ def cell_clust_assign(seg, X, groups):
             cell_bb[cell_id] = groups_cell[cell_id][np.argmax(counts[cell_id])]
 
     # make sure that each backbone cluster has at least one cell assigned to it
+    print(np.unique(groups))
     for group in np.unique(groups):
         indices = np.where(cell_bb == group)[0]
         if indices.shape[0] == 0:
             print("empty cluster: ", group)
             unique_cells, count_cells = np.unique(count_group[group], return_counts=True)
             unique_cells = unique_cells[np.argsort(count_cells)[::-1][:10]]
+            print(unique_cells)
             cell_bb[unique_cells] = group
 
     return cell_bb
@@ -316,6 +284,7 @@ def mean_pt(groups, seg, y):
     return np.array(group_pt)
 
 
+# dead lock
 def pt_mst(adj, mean_pt):
     source = np.argmin(mean_pt)
     cover = np.array([False for i in range(adj.shape[0])])
@@ -347,21 +316,27 @@ def backbone_finding(data, n_randwk = 300, window_size = 20, step_size = 10, n_n
     X_pca = utils.pca_op(X, n_comps=30, standardize=False)
     randwk = random_walk(X_pca, y, t_max = 10000, i_max = n_randwk, k = 5)
     seg = segmentation(randwk, X_pca[:,:4], cell_backbone=None, wind_size = window_size, step = step_size, y = y)
-    seg_pca = utils.pca_op(seg['seg_features'], n_comps=30, standardize=False)
+    # seg_pca = utils.pca_op(seg['seg_features'], n_comps=30, standardize=False)
+    seg_pca = seg['seg_features']
     conn, G = nearest_neighbor(seg_pca, k = n_neighs)
     groups, n_clusters = leiden(conn, resolution = resolution, n_iterations = -1)
     print('number of clusters: ', int(np.max(groups))+1)
     adj_groups = retrieve_conn(seg, groups)
     group_pt = mean_pt(groups, seg, y)
     if style == 'tree':
+        # T = pt_mst(adj_groups, group_pt)
+        T = post_processing_tree(adj_groups)
+    elif style == 'pseudo-time':
         T = pt_mst(adj_groups, group_pt)
-        # T = post_processing_tree(adj_groups)
     elif style == 'pruning':
         T = post_processing_pruning(adj_groups, diff_thd=threshold)
     else:
         raise ValueError("only between tree and pruning")
+    
+    print("cell assignment")
     cell_bb = cell_clust_assign(seg = seg, X = X, groups = groups)
     
+    print("write in results")
     results = {'seg': seg, 'seg_groups': groups, 'cell_groups': cell_bb, 'mst': T, 'origin_conn': adj_groups, 'X': X, 'y': y}
     return results
 
@@ -424,6 +399,7 @@ def plot_backbone(results, version = 'segment', figsize = (20,5)):
         ax2.scatter(X_pca[:,0], X_pca[:,1], color = 'gray')
 
         mean_cluster = [[] for x in range(adj_groups.shape[0])]
+        print(np.unique(cell_bb))
         for i, cat in enumerate(np.unique(cell_bb)):
             idx = np.where(cell_bb == cat)[0]
             cluster = ax1.scatter(X_pca[idx,0], X_pca[idx,1], color = cmap(i), cmap = 'tab20')
@@ -441,12 +417,15 @@ def plot_backbone(results, version = 'segment', figsize = (20,5)):
         fig.legend(handles, labels, loc='upper right')
 
 
+        print(mean_cluster)
         for i in range(conn.shape[0]):
             for j in range(conn.shape[1]):
                 if conn[i,j] != 0:
-                    ax1.plot([mean_cluster[i][0], mean_cluster[j][0]], [mean_cluster[i][1], mean_cluster[j][1]], 'r-')
-        
-
+                    try:
+                        ax1.plot([mean_cluster[i][0], mean_cluster[j][0]], [mean_cluster[i][1], mean_cluster[j][1]], 'r-')
+                    except:
+                        print(mean_cluster[i])
+                        print(mean_cluster[j])
         conn = T
         for i in range(adj_groups.shape[0]):
             for j in range(adj_groups.shape[1]):
