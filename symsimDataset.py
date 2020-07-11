@@ -39,7 +39,7 @@ def process_adata(adata, noise=0.0):
 
     X_spliced = adata.X.toarray()
 
-    pipeline = Pipeline([('pca', PCA(n_components=80, svd_solver='arpack'))])
+    pipeline = Pipeline([('pca', PCA(n_components=30, svd_solver='arpack'))])
     X_pca = pipeline.fit_transform(X_spliced)
 
     # X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
