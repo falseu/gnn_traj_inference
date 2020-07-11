@@ -207,6 +207,68 @@ class SymsimTree(InMemoryDataset):
         return '{}()'.format(self.__class__.__name__)
 
 
+class SymsimTrifur(InMemoryDataset):
+
+    def __init__(self, root='data/', transform=None, pre_transform=None):
+        super(SymsimTrifur, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        return []
+
+    @property
+    def processed_file_names(self):
+        return ['SymsimTrifur.dataset']
+
+    def download(self):
+        pass
+
+    def process(self):
+        data_list = []
+        root = "data/symsim/"
+        tree_files = ['trifurcating/rand'+str(i)+'/' for i in range(1,51)]
+
+        for file_name in tree_files:
+            X_unspliced = pd.read_csv(root + file_name + "unspliced_counts.txt", sep="\t",header=None).to_numpy().T
+            X_spliced = pd.read_csv(root + file_name + "spliced_counts.txt", sep = "\t",header=None).to_numpy().T
+            true_velo = pd.read_csv(root + file_name + "true_velo.txt", sep="\t",header=None).to_numpy().T
+            true_time = pd.read_csv(root + file_name + "cell_labels.txt", sep = "\t",lineterminator="\n").to_numpy()
+            X_obs = pd.DataFrame(data=true_time, index = ['cell_' + str(x) for x in range(X_unspliced.shape[0])], columns = ['back_bone','sim_time'])
+
+
+            adata = anndata.AnnData(X = csr_matrix(X_spliced),
+                            obs = X_obs,
+                            layers = dict(
+                                unspliced = csr_matrix(X_unspliced),
+                                spliced = csr_matrix(X_spliced),
+                                true_velo = true_velo
+                            ))
+
+            data = process_adata(adata)
+            data_list.append(data)
+
+            for capture_rate in [0.2, 0.4]:
+                noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
+                noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
+
+                adata = anndata.AnnData(X = csr_matrix(X_spliced),
+                            obs = X_obs,
+                            layers = dict(
+                                unspliced = csr_matrix(noisy_X_unspliced),
+                                spliced = csr_matrix(noisy_X_spliced),
+                                true_velo = true_velo
+                            ))
+
+                data = process_adata(adata, noise=capture_rate)
+                data_list.append(data)
+
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])
+    def __repr__(self):
+        return '{}()'.format(self.__class__.__name__)
+
+
 class SymsimBranch(InMemoryDataset):
 
     def __init__(self, root='data/', transform=None, pre_transform=None):

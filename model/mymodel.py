@@ -171,6 +171,7 @@ class DiffusionModel(torch.nn.Module):
         # self.norm2 = nn.BatchNorm1d(self.h2)
 
         self.lin = nn.Linear(hidden2, 1)
+        # self.lin2 = nn.Linear(hidden2, 1)
 
         self.p1 = dropout1
         self.p2 = dropout2
@@ -179,6 +180,7 @@ class DiffusionModel(torch.nn.Module):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
         self.lin.reset_parameters()
+        # self.lin2.reset_parameters()
 
     def forward(self, data):
         x = data.x.float()
