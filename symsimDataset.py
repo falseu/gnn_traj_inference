@@ -165,7 +165,7 @@ class SymsimTree(InMemoryDataset):
     def process(self):
         data_list = []
         root = "data/symsim/"
-        tree_files = ['tree/rand'+str(i)+'/' for i in range(1,101)]
+        tree_files = ['tree_new/rand'+str(i)+'/' for i in range(1,51)]
 
         for file_name in tree_files:
             X_unspliced = pd.read_csv(root + file_name + "unspliced_counts.txt", sep="\t",header=None).to_numpy().T
