@@ -3,6 +3,48 @@ import numpy as np
 from torch_geometric.data import Data
 import torch 
 from sklearn.metrics import mean_squared_error
+import scvelo as scv 
+import scanpy as sc
+import anndata
+from scipy.sparse import csr_matrix
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
+from sklearn.decomposition import PCA
+from sklearn.pipeline import Pipeline
+from sklearn.neighbors import kneighbors_graph
+
+def technological_noise(count_mt, capture_rate = 0.2):
+    
+    X = count_mt.astype('int')
+    libsize_cell = [np.sum(X[cell,:]) for cell in range(X.shape[0])]
+
+    gene_indices = [[0 for gene in range(libsize_cell[cell])] for cell in range(X.shape[0])]
+    sampled_genes = []
+    
+    for cell_id, gene_idx in enumerate(gene_indices):
+        subsample = np.random.uniform(0.0, 1.0, size = len(gene_indices)) > (1-capture_rate)
+        sampled_genes.append(subsample)
+        idx = 0
+        for gene_id, gene_num in enumerate(X[cell_id,:]):
+            count = np.sum(subsample[idx:(idx + int(gene_num))])
+            X[cell_id, gene_id] = count
+            
+    return X
+
+def calculate_adj(conn, x, v):
+    adj = np.full_like(conn, np.nan)
+    for i in range(conn.shape[0]):
+        # self loop
+        adj[i][i] = 0
+
+        indices = conn[i,:].nonzero()[0]
+        for k in indices:
+            diff = x[i, :] - x[k, :] # 1,d
+            distance = np.linalg.norm(diff, ord=2) #1
+            # penalty = np.dot(diff, velo_matrix[k, :, None]) / np.linalg.norm(velo_matrix[k,:], ord=2) / distance
+            penalty = np.dot(diff, v[k, :, None]) / np.linalg.norm(v[k,:], ord=2) / distance
+            penalty = 0 if np.isnan(penalty) else penalty
+            adj[i][k] = penalty
+    return adj
 
 def pca_op(X, n_comps = 2, standardize  = True):
     """\
@@ -92,18 +134,16 @@ def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", m
 
     if metric == "kendall_tau":
         loss = kendalltau(pred, y)
-        ax1.set_title("Prediction, kendalltau="+str(loss)[:5])
+        ax1.set_title("Prediction, kendalltau="+str(loss)[:5] + " data noise="+str(data.noise[0]))
     elif metric == "pearson":
         loss = pearson(pred, y)
-        ax1.set_title("Prediction, pearson="+str(loss)[:5])
+        ax1.set_title("Prediction, pearson="+str(loss)[:5] + " data noise="+str(data.noise[0]))
 
     else:
         loss = mean_squared_error(y, pred)
         ax1.set_title("Prediction, rmse="+str(loss)[:5])
 
     ax2.set_title("Ground Truth")
-    print(loss)
-    
 
     if coloring == "order":
         y_sorted = sorted(y)
