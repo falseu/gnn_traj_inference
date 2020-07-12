@@ -12,8 +12,42 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import kneighbors_graph
-from utils import technological_noise, calculate_adj
 
+
+
+def technological_noise(count_mt, capture_rate = 0.2):
+    
+    X = count_mt.astype('int')
+    libsize_cell = [np.sum(X[cell,:]) for cell in range(X.shape[0])]
+
+    gene_indices = [[0 for gene in range(libsize_cell[cell])] for cell in range(X.shape[0])]
+    sampled_genes = []
+    
+    for cell_id, gene_idx in enumerate(gene_indices):
+        subsample = np.random.uniform(0.0, 1.0, size = len(gene_indices)) > (1-capture_rate)
+        sampled_genes.append(subsample)
+        idx = 0
+        for gene_id, gene_num in enumerate(X[cell_id,:]):
+            count = np.sum(subsample[idx:(idx + int(gene_num))])
+            X[cell_id, gene_id] = count
+            
+    return X
+
+def calculate_adj(conn, x, v):
+    adj = np.full_like(conn, np.nan)
+    for i in range(conn.shape[0]):
+        # self loop
+        adj[i][i] = 0
+
+        indices = conn[i,:].nonzero()[0]
+        for k in indices:
+            diff = x[i, :] - x[k, :] # 1,d
+            distance = np.linalg.norm(diff, ord=2) #1
+            # penalty = np.dot(diff, velo_matrix[k, :, None]) / np.linalg.norm(velo_matrix[k,:], ord=2) / distance
+            penalty = np.dot(diff, v[k, :, None]) / np.linalg.norm(v[k,:], ord=2) / distance
+            penalty = 0 if np.isnan(penalty) else penalty
+            adj[i][k] = penalty
+    return adj
 
 class RnaVeloDataset(InMemoryDataset):
 
@@ -84,7 +118,7 @@ class RnaVeloDataset(InMemoryDataset):
 
             X_spliced = adata.X.toarray()
 
-            pipeline = Pipeline([('pca', PCA(n_components=80, svd_solver='arpack'))])
+            pipeline = Pipeline([('pca', PCA(n_components=30, svd_solver='arpack'))])
             X_pca = pipeline.fit_transform(X_spliced)
 
             # X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
