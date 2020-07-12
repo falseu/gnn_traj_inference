@@ -20,19 +20,15 @@ def process_adata(adata, noise=0.0):
     # scv.pp.filter_and_normalize(adata, min_shared_counts=0, n_top_genes=305)
     # adata = adata[:,:300]
     
-    scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=0, n_top_genes=301, log=True)
+    scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=0, n_top_genes=302, log=True)
     if adata.n_vars > 300:
         adata = adata[:,:300]
     elif adata.n_vars < 300:
-        raise ValueError("Feature number smaller than 300")
+        raise ValueError("Feature number", adata.n_vars)
     scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
     scv.tl.velocity(adata, mode='stochastic') 
 
-    print(adata.n_vars)
-
-    # compute velocity
-    scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
-    scv.tl.velocity(adata, mode='stochastic')            
+    print(adata.n_vars)      
     velo_matrix = adata.layers["velocity"].copy()
 
     adata2 = adata.copy()

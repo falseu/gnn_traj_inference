@@ -85,10 +85,7 @@ class forebrainDataset(InMemoryDataset):
         
         scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
         scv.tl.velocity(adata, mode='stochastic') 
-
-        # compute velocity
-        # scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
-        # scv.tl.velocity(adata, mode='stochastic')            
+           
         velo_matrix = adata.layers["velocity"].copy()
 
         adata2 = adata.copy()
