@@ -97,12 +97,14 @@ class RnaVeloDataset(InMemoryDataset):
                                 spliced = csr_matrix(X_spliced)
                             ))
 
-            scv.pp.filter_and_normalize(adata, min_shared_counts=0, n_top_genes=305)
-            adata = adata[:,:300]
-
-            # compute velocity
+            scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=0, n_top_genes=301, log=True)
+            if adata.n_vars > 300:
+                print("curr genes:", adata.n_vars)
+                adata = adata[:,:300]
+            elif adata.n_vars < 300:
+                raise ValueError("Feature number", adata.n_vars)
             scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
-            scv.tl.velocity(adata, mode='stochastic')            
+            scv.tl.velocity(adata, mode='stochastic')       
             velo_matrix = adata.layers["velocity"].copy()
 
             adata2 = adata.copy()
