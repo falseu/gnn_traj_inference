@@ -77,6 +77,12 @@ class forebrainDataset(InMemoryDataset):
         # scv.pp.filter_and_normalize(adata, min_shared_counts=0, n_top_genes=305)
         # adata = adata[::3,:300]
         scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=20, n_top_genes=301, log=True)
+        
+        if adata.n_vars > 300:
+            adata = adata[:,:300]
+        elif adata.n_vars < 300:
+            raise ValueError("Feature number smaller than 300")
+        
         scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
         scv.tl.velocity(adata, mode='stochastic') 
 
@@ -175,6 +181,12 @@ class chromaffinDataset(InMemoryDataset):
         # scv.tl.velocity(adata, mode='stochastic')   
 
         scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=20, n_top_genes=301, log=True)
+        
+        if adata.n_vars > 300:
+            adata = adata[:,:300]
+        elif adata.n_vars < 300:
+            raise ValueError("Feature number smaller than 300")
+
         scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
         scv.tl.velocity(adata, mode='stochastic')     
              
