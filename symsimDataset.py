@@ -123,20 +123,20 @@ class SymsimBifur(InMemoryDataset):
             data = process_adata(adata)
             data_list.append(data)
 
-            for capture_rate in [0.2, 0.4]:
-                noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
-                noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
+            # for capture_rate in [0.2, 0.4]:
+            #     noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
+            #     noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
 
-                adata = anndata.AnnData(X = csr_matrix(X_spliced),
-                            obs = X_obs,
-                            layers = dict(
-                                unspliced = csr_matrix(noisy_X_unspliced),
-                                spliced = csr_matrix(noisy_X_spliced),
-                                true_velo = true_velo
-                            ))
+            #     adata = anndata.AnnData(X = csr_matrix(X_spliced),
+            #                 obs = X_obs,
+            #                 layers = dict(
+            #                     unspliced = csr_matrix(noisy_X_unspliced),
+            #                     spliced = csr_matrix(noisy_X_spliced),
+            #                     true_velo = true_velo
+            #                 ))
 
-                data = process_adata(adata, noise=capture_rate)
-                data_list.append(data)
+            #     data = process_adata(adata, noise=capture_rate)
+            #     data_list.append(data)
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
@@ -186,20 +186,20 @@ class SymsimTree(InMemoryDataset):
             data = process_adata(adata)
             data_list.append(data)
 
-            for capture_rate in [0.2, 0.4]:
-                noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
-                noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
+            # for capture_rate in [0.2, 0.4]:
+            #     noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
+            #     noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
 
-                adata = anndata.AnnData(X = csr_matrix(X_spliced),
-                            obs = X_obs,
-                            layers = dict(
-                                unspliced = csr_matrix(noisy_X_unspliced),
-                                spliced = csr_matrix(noisy_X_spliced),
-                                true_velo = true_velo
-                            ))
+            #     adata = anndata.AnnData(X = csr_matrix(X_spliced),
+            #                 obs = X_obs,
+            #                 layers = dict(
+            #                     unspliced = csr_matrix(noisy_X_unspliced),
+            #                     spliced = csr_matrix(noisy_X_spliced),
+            #                     true_velo = true_velo
+            #                 ))
 
-                data = process_adata(adata, noise=capture_rate)
-                data_list.append(data)
+            #     data = process_adata(adata, noise=capture_rate)
+            #     data_list.append(data)
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
@@ -248,20 +248,20 @@ class SymsimTrifur(InMemoryDataset):
             data = process_adata(adata)
             data_list.append(data)
 
-            for capture_rate in [0.2, 0.4]:
-                noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
-                noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
+            # for capture_rate in [0.2, 0.4]:
+            #     noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
+            #     noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
 
-                adata = anndata.AnnData(X = csr_matrix(X_spliced),
-                            obs = X_obs,
-                            layers = dict(
-                                unspliced = csr_matrix(noisy_X_unspliced),
-                                spliced = csr_matrix(noisy_X_spliced),
-                                true_velo = true_velo
-                            ))
+            #     adata = anndata.AnnData(X = csr_matrix(X_spliced),
+            #                 obs = X_obs,
+            #                 layers = dict(
+            #                     unspliced = csr_matrix(noisy_X_unspliced),
+            #                     spliced = csr_matrix(noisy_X_spliced),
+            #                     true_velo = true_velo
+            #                 ))
 
-                data = process_adata(adata, noise=capture_rate)
-                data_list.append(data)
+            #     data = process_adata(adata, noise=capture_rate)
+            #     data_list.append(data)
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
@@ -382,20 +382,20 @@ class SymsimLinear(InMemoryDataset):
             data = process_adata(adata)
             data_list.append(data)
 
-            for capture_rate in [0.2, 0.4]:
-                noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
-                noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
+            # for capture_rate in [0.2, 0.4]:
+            #     noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
+            #     noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
 
-                adata = anndata.AnnData(X = csr_matrix(X_spliced),
-                            obs = X_obs,
-                            layers = dict(
-                                unspliced = csr_matrix(noisy_X_unspliced),
-                                spliced = csr_matrix(noisy_X_spliced),
-                                true_velo = true_velo
-                            ))
+            #     adata = anndata.AnnData(X = csr_matrix(X_spliced),
+            #                 obs = X_obs,
+            #                 layers = dict(
+            #                     unspliced = csr_matrix(noisy_X_unspliced),
+            #                     spliced = csr_matrix(noisy_X_spliced),
+            #                     true_velo = true_velo
+            #                 ))
 
-                data = process_adata(adata, noise=capture_rate)
-                data_list.append(data)
+            #     data = process_adata(adata, noise=capture_rate)
+            #     data_list.append(data)
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])       
@@ -445,20 +445,20 @@ class SymsimCycle(InMemoryDataset):
             data = process_adata(adata)
             data_list.append(data)
 
-            for capture_rate in [0.2, 0.4]:
-                noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
-                noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
+            # for capture_rate in [0.2, 0.4]:
+            #     noisy_X_unspliced = technological_noise(X_unspliced, capture_rate=capture_rate)
+            #     noisy_X_spliced = technological_noise(X_spliced, capture_rate=capture_rate)
 
-                adata = anndata.AnnData(X = csr_matrix(X_spliced),
-                            obs = X_obs,
-                            layers = dict(
-                                unspliced = csr_matrix(noisy_X_unspliced),
-                                spliced = csr_matrix(noisy_X_spliced),
-                                true_velo = true_velo
-                            ))
+            #     adata = anndata.AnnData(X = csr_matrix(X_spliced),
+            #                 obs = X_obs,
+            #                 layers = dict(
+            #                     unspliced = csr_matrix(noisy_X_unspliced),
+            #                     spliced = csr_matrix(noisy_X_spliced),
+            #                     true_velo = true_velo
+            #                 ))
 
-                data = process_adata(adata, noise=capture_rate)
-                data_list.append(data)
+            #     data = process_adata(adata, noise=capture_rate)
+            #     data_list.append(data)
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])       
