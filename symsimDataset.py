@@ -17,8 +17,13 @@ from sklearn.neighbors import kneighbors_graph
 from utils import technological_noise, calculate_adj
 
 def process_adata(adata, noise=0.0):
-    scv.pp.filter_and_normalize(adata, min_shared_counts=0, n_top_genes=305)
-    adata = adata[:,:300]
+    # scv.pp.filter_and_normalize(adata, min_shared_counts=0, n_top_genes=305)
+    # adata = adata[:,:300]
+    
+    scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=20, n_top_genes=301, log=True)
+    scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+    scv.tl.velocity(adata, mode='stochastic') 
+
     print(adata.n_vars)
 
     # compute velocity
