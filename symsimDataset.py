@@ -17,9 +17,7 @@ from sklearn.neighbors import kneighbors_graph
 from utils import technological_noise, calculate_adj
 
 def process_adata(adata, noise=0.0):
-    # scv.pp.filter_and_normalize(adata, min_shared_counts=0, n_top_genes=305)
-    # adata = adata[:,:300]
-    
+
     scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=0, n_top_genes=302, log=True)
     if adata.n_vars > 300:
         adata = adata[:,:300]
@@ -80,7 +78,34 @@ def process_adata(adata, noise=0.0):
 
     adj = calculate_adj(conn, X_pca, velo_pca)
 
-    data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, y_dpt = y_dpt, y_vdpt = y_vdpt, noise=noise)
+    hop_pos=1
+    hop_neg=4
+    adj_new = adj.copy()
+    adj_new = adj_new - adj_new[0,0] * np.diag(np.ones(adj.shape[0]))
+    train_nodes = np.arange(adj_new.shape[0])
+
+    node_pos_neighbor = torch.zeros((adj.shape[0], adj.shape[0]))
+    node_neg_neighbor = torch.zeros((adj.shape[0], adj.shape[0]))
+    for node in train_nodes:
+        neighbors = set([node])
+        frontier = set([node])
+        for i in range(hop_neg):
+            current = set()
+            for outer in frontier:
+                index = set(np.where(np.isnan(adj[outer,:]) == False)[0])
+                # print("neg sampling:", index)
+                current |= index
+            frontier = current - neighbors
+            # print("current: ", current)
+            neighbors |= current
+            if i == hop_pos - 1:
+                pos_neighbors = neighbors.copy()
+        far_nodes = set(train_nodes) - neighbors
+        
+        node_pos_neighbor[node][list(pos_neighbors)] = 1
+        node_neg_neighbor[node][list(far_nodes)] = 1
+
+    data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, y_dpt = y_dpt, y_vdpt = y_vdpt, noise=noise, pos_neighbor=node_pos_neighbor, neg_neighbor=node_neg_neighbor)
     return data
 
 class SymsimBifur(InMemoryDataset):

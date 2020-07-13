@@ -97,9 +97,8 @@ def pearson(y_pred, y_label):
     score = np.sum(vx * vy) / (np.sqrt(np.sum(vx ** 2)) * np.sqrt(np.sum(vy ** 2)))
     return score
 
-def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", metric = "kendall_tau", knn=False):
+def scatter(model, data, figsize = (15,5), method = 'pca', coloring = "order", metric = "kendall_tau", knn=False, device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
     model.eval()
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # X should be something before pca
     if isinstance(data.x, torch.Tensor):
         X = data.x.numpy()
