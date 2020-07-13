@@ -78,14 +78,15 @@ def process_adata(adata, noise=0.0):
 
     adj = calculate_adj(conn, X_pca, velo_pca)
 
+    # pos neg neighborhood for regularization
     hop_pos=1
     hop_neg=4
     adj_new = adj.copy()
     adj_new = adj_new - adj_new[0,0] * np.diag(np.ones(adj.shape[0]))
     train_nodes = np.arange(adj_new.shape[0])
 
-    node_pos_neighbor = torch.zeros((adj.shape[0], adj.shape[0]))
-    node_neg_neighbor = torch.zeros((adj.shape[0], adj.shape[0]))
+    node_pos_neighbor = np.zeros((adj.shape[0], adj.shape[0]))
+    node_neg_neighbor = np.zeros((adj.shape[0], adj.shape[0]))
     for node in train_nodes:
         neighbors = set([node])
         frontier = set([node])
@@ -93,10 +94,8 @@ def process_adata(adata, noise=0.0):
             current = set()
             for outer in frontier:
                 index = set(np.where(np.isnan(adj[outer,:]) == False)[0])
-                # print("neg sampling:", index)
                 current |= index
             frontier = current - neighbors
-            # print("current: ", current)
             neighbors |= current
             if i == hop_pos - 1:
                 pos_neighbors = neighbors.copy()

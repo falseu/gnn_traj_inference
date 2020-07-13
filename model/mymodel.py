@@ -171,6 +171,8 @@ class DiffusionModel(torch.nn.Module):
         # self.norm2 = nn.BatchNorm1d(self.h2)
 
         self.lin = nn.Linear(hidden2, 1)
+        self.relu1 = nn.LeakyReLU(0.1)
+        self.relu2 = nn.LeakyReLU(0.1)
         # self.lin2 = nn.Linear(hidden2, 1)
 
         self.p1 = dropout1
@@ -195,9 +197,9 @@ class DiffusionModel(torch.nn.Module):
         adj = adj.to(self.device)
 
         x = self.conv1(x, adj, self.device).squeeze()
-        x = F.relu(F.dropout(x, p=self.p1))
+        x = self.relu1(F.dropout(x, p=self.p1))
         x = self.conv2(x, adj, self.device).squeeze()
-        node_embed = F.relu(F.dropout(x, p=self.p2))
+        node_embed = self.relu2(F.dropout(x, p=self.p2))
         output = F.sigmoid(self.lin(node_embed))
 
         return output, node_embed, adj
