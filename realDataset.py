@@ -497,7 +497,7 @@ class peDataset(InMemoryDataset):
         # scv.tl.velocity(adata, mode='stochastic')   
 
         scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=20, n_top_genes=301, log=True)
-        adata = adata[::5,:300]
+        adata = adata[::10,:300]
 
         scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
         scv.tl.velocity(adata, mode='stochastic')     
