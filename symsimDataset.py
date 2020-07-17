@@ -14,98 +14,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import kneighbors_graph
-from utils import technological_noise, calculate_adj
-
-def process_adata(adata, noise=0.0):
-
-    scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=0, n_top_genes=302, log=True)
-    if adata.n_vars > 300:
-        adata = adata[:,:300]
-    elif adata.n_vars < 300:
-        raise ValueError("Feature number", adata.n_vars)
-    scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
-    scv.tl.velocity(adata, mode='stochastic') 
-
-    print(adata.n_vars)      
-    velo_matrix = adata.layers["velocity"].copy()
-
-    adata2 = adata.copy()
-    # dpt
-    adata.uns['iroot'] = 0
-    sc.tl.diffmap(adata)
-    sc.tl.dpt(adata)
-    #velo-dpt
-    scv.tl.velocity_graph(adata2)
-    scv.tl.velocity_pseudotime(adata2)
-    y_dpt = adata.obs['dpt_pseudotime'].to_numpy()
-    y_vdpt = adata2.obs['velocity_pseudotime'].to_numpy()
-
-    X_spliced = adata.X.toarray()
-
-    pipeline = Pipeline([('pca', PCA(n_components=30, svd_solver='arpack'))])
-    X_pca = pipeline.fit_transform(X_spliced)
-
-    # X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
-    X_pre = X_spliced + velo_matrix
-
-    X_pca_pre = pipeline.transform(X_pre)
-    velo_pca = X_pca_pre - X_pca
-
-    directed_conn = kneighbors_graph(X_pca, n_neighbors=10, mode='connectivity', include_self=False).toarray()
-    conn = directed_conn + directed_conn.T
-    conn[conn.nonzero()[0],conn.nonzero()[1]] = 1
-
-    # X_spliced is original, X_pca is after pca
-    x = X_spliced.copy()
-    x = StandardScaler().fit_transform(x)
-    x = torch.FloatTensor(x)
-
-    # X_pca_pre is after pca
-    v = StandardScaler().fit_transform(X_pre)
-    v = torch.FloatTensor(v)
-
-    # Simulation time label
-    y = adata.obs['sim_time'].to_numpy().reshape((-1, 1))
-    scaler = MinMaxScaler((0, 1))
-    scaler.fit(y)
-    y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
-
-    # Graph type label
-    # y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
-
-    edge_index = np.array(np.where(conn == 1))
-    edge_index = torch.LongTensor(edge_index)
-
-    adj = calculate_adj(conn, X_pca, velo_pca)
-
-    # pos neg neighborhood for regularization
-    hop_pos=1
-    hop_neg=4
-    adj_new = adj.copy()
-    adj_new = adj_new - adj_new[0,0] * np.diag(np.ones(adj.shape[0]))
-    train_nodes = np.arange(adj_new.shape[0])
-
-    node_pos_neighbor = np.zeros((adj.shape[0], adj.shape[0]))
-    node_neg_neighbor = np.zeros((adj.shape[0], adj.shape[0]))
-    for node in train_nodes:
-        neighbors = set([node])
-        frontier = set([node])
-        for i in range(hop_neg):
-            current = set()
-            for outer in frontier:
-                index = set(np.where(np.isnan(adj[outer,:]) == False)[0])
-                current |= index
-            frontier = current - neighbors
-            neighbors |= current
-            if i == hop_pos - 1:
-                pos_neighbors = neighbors.copy()
-        far_nodes = set(train_nodes) - neighbors
-        
-        node_pos_neighbor[node][list(pos_neighbors)] = 1
-        node_neg_neighbor[node][list(far_nodes)] = 1
-
-    data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, y_dpt = y_dpt, y_vdpt = y_vdpt, noise=noise, pos_neighbor=node_pos_neighbor, neg_neighbor=node_neg_neighbor)
-    return data
+from utils import technological_noise, calculate_adj, process_adata
 
 class SymsimBifur(InMemoryDataset):
 
@@ -125,11 +34,8 @@ class SymsimBifur(InMemoryDataset):
         pass
 
     def process(self):
-        start = 25
-        end = 75
         root = "data/symsim/"
-        count = 2 * np.arange(start,end) + 1
-        files = ['bifur/branch'+str(x) + '/' for x in count]
+        files = ['bifurcating/branch'+str(x) + '/' for x in range(1, 51)]
         data_list = []
 
         for file_name in files:
@@ -194,7 +100,7 @@ class SymsimTree(InMemoryDataset):
     def process(self):
         data_list = []
         root = "data/symsim/"
-        tree_files = ['tree_new/rand'+str(i)+'/' for i in range(1,51)]
+        tree_files = ['tree/rand'+str(i)+'/' for i in range(1,51)]
 
         for file_name in tree_files:
             X_unspliced = pd.read_csv(root + file_name + "unspliced_counts.txt", sep="\t",header=None).to_numpy().T

@@ -11,6 +11,65 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import kneighbors_graph
+from backbone import nearest_neighbor
+
+def process_adata(adata, noise=0.0):
+
+    scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=0, n_top_genes=300, log=True)
+    if adata.n_vars > 299:
+        adata = adata[:,:299]
+    elif adata.n_vars < 299:
+        raise ValueError("Feature number", adata.n_vars)
+
+    print(adata.X.shape)
+
+    scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+    scv.tl.velocity(adata, mode='stochastic') 
+
+    adata2 = adata.copy()
+    # dpt
+    adata.uns['iroot'] = 0
+    sc.tl.diffmap(adata)
+    sc.tl.dpt(adata)
+    #velo-dpt
+    scv.tl.velocity_graph(adata2)
+    scv.tl.velocity_pseudotime(adata2)
+    y_dpt = adata.obs['dpt_pseudotime'].to_numpy()
+    y_vdpt = adata2.obs['velocity_pseudotime'].to_numpy()
+
+    X_spliced = adata.X.toarray()
+
+    pipeline = Pipeline([('pca', PCA(n_components=30, svd_solver='arpack'))])
+    X_pca = pipeline.fit_transform(X_spliced)
+
+    conn, G = nearest_neighbor(X_pca, k=10, sigma=3)
+
+    # X_spliced is original, X_pca is after pca
+    x = X_spliced.copy()
+    x = StandardScaler().fit_transform(x)
+    x = torch.FloatTensor(x.copy())
+
+    # X_pca_pre is after pca
+    # v = StandardScaler().fit_transform(X_pre)
+    # v = torch.FloatTensor(v)
+
+    # Simulation time label
+    y = adata.obs['sim_time'].to_numpy().reshape((-1, 1))
+    scaler = MinMaxScaler((0, 1))
+    scaler.fit(y)
+    y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
+
+    # Graph type label
+    # y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
+
+    edge_index = np.array(np.nonzero(conn))
+    edge_index = torch.LongTensor(edge_index)
+
+    adj = conn.copy()
+
+    data = Data(x=x, edge_index=edge_index, y=y, adj=adj, y_dpt = y_dpt, y_vdpt = y_vdpt, noise=noise)
+    print(x.shape)
+    return data
 
 def technological_noise(count_mt, capture_rate = 0.2):
     

@@ -12,7 +12,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import kneighbors_graph
-
+from utils import process_adata
 
 
 def technological_noise(count_mt, capture_rate = 0.2):
@@ -97,68 +97,7 @@ class RnaVeloDataset(InMemoryDataset):
                                 spliced = csr_matrix(X_spliced)
                             ))
 
-            scv.pp.filter_and_normalize(adata, flavor = 'cell_ranger', min_shared_counts=0, n_top_genes=301, log=True)
-            if adata.n_vars > 300:
-                print("curr genes:", adata.n_vars)
-                adata = adata[:,:300]
-            elif adata.n_vars < 300:
-                raise ValueError("Feature number", adata.n_vars)
-            scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
-            scv.tl.velocity(adata, mode='stochastic')       
-            velo_matrix = adata.layers["velocity"].copy()
-
-            adata2 = adata.copy()
-            # dpt
-            adata.uns['iroot'] = 0
-            sc.tl.diffmap(adata)
-            sc.tl.dpt(adata)
-            #velo-dpt
-            scv.tl.velocity_graph(adata2)
-            scv.tl.velocity_pseudotime(adata2)
-            y_dpt = adata.obs['dpt_pseudotime'].to_numpy()
-            y_vdpt = adata2.obs['velocity_pseudotime'].to_numpy()
-
-            X_spliced = adata.X.toarray()
-
-            pipeline = Pipeline([('pca', PCA(n_components=30, svd_solver='arpack'))])
-            X_pca = pipeline.fit_transform(X_spliced)
-
-            # X_pre = X_spliced + velo_matrix/np.linalg.norm(velo_matrix,axis=1)[:,None]*3
-            X_pre = X_spliced + velo_matrix
-
-            X_pca_pre = pipeline.transform(X_pre)
-            velo_pca = X_pca_pre - X_pca
-
-            directed_conn = kneighbors_graph(X_pca, n_neighbors=10, mode='connectivity', include_self=False).toarray()
-            conn = directed_conn + directed_conn.T
-            conn[conn.nonzero()[0],conn.nonzero()[1]] = 1
-
-            # X_spliced is original, X_pca is after pca
-            x = X_spliced.copy()
-            x = StandardScaler().fit_transform(x)
-            x = torch.FloatTensor(x)
-
-            # X_pca_pre is after pca
-            v = StandardScaler().fit_transform(X_pre)
-            v = torch.FloatTensor(v)
-
-            # Simulation time label
-            y = adata.obs['sim_time'].to_numpy().reshape((-1, 1))
-            scaler = MinMaxScaler((0, 1))
-            scaler.fit(y)
-            y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
-
-            # Graph type label
-            # y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
-
-            edge_index = np.array(np.where(conn == 1))
-            edge_index = torch.LongTensor(edge_index)
-
-            adj = calculate_adj(conn, X_pca, velo_pca)
-                
-            assert adata.n_vars == 300
-            
-            data = Data(x=x, edge_index=edge_index, y=y, adj=adj, v=v, y_dpt = y_dpt, y_vdpt = y_vdpt)
+            data = process_adata(adata)
             data_list.append(data)
 
         data, slices = self.collate(data_list)

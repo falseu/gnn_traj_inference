@@ -47,47 +47,45 @@ class MyModel(torch.nn.Module):
         return x
 
 class GraphSAGEModel(torch.nn.Module):
-    def __init__(self, in_channels, device):
+    def __init__(self, in_channels, device, h1, h2, dropout1, dropout2):
         super(GraphSAGEModel, self).__init__()
         self.device = device
-
-        self.conv1 = GraphConvolutionSage(in_channels, 256)
-        self.conv2 = GraphConvolutionSage(256, 64)
-
-        # self.lin1 = nn.Linear(400, 64)
-        # self.lin2 = nn.Linear(64, 64)
-        self.lin3 = nn.Linear(64, 1)
+        self.conv1 = GraphConvolutionSage(in_channels, h1)
+        self.conv2 = GraphConvolutionSage(h1, h2)
+        self.lin = nn.Linear(h2, 1)
+        self.p1 = dropout1
+        self.p2 = dropout2
     
     def reset_parameters(self):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
 
-        # self.lin1.reset_parameters()
-        # self.lin2.reset_parameters()
-        self.lin3.reset_parameters()
+        self.lin.reset_parameters()
 
     def forward(self, data):
-        x, v = data.x.float(), data.v.float()
+        x = data.x.float()
         if len(data.adj) == 1:
             adj = torch.FloatTensor(data.adj).view(x.shape[0], x.shape[0])
         else:
             adj = torch.FloatTensor(block_diag(*[i[0] for i in data.adj]))
     
         # adj np.inf denote disconnected
-        adj = F.sigmoid(adj)
+        # adj = F.sigmoid(adj)
 
-        adj[torch.isnan(adj)] = 0
-        adj[adj <= 0.7] = 0
-        adj = adj * 4
+        # adj[torch.isnan(adj)] = 0
+        # adj[adj <= 0.7] = 0
+        # adj = adj * 4
 
+        # adj = F.sigmoid(adj)
+        # print(adj)
+        adj = adj / adj.sum(1)
         adj = adj.to(self.device)
 
-        x = F.relu(self.conv1(x, adj, self.device))
-        node_embed = F.relu(self.conv2(x, adj, self.device))
-        # x = F.relu(self.lin1(x))
-        # x = F.relu(self.lin2(torch.cat((x, v), dim=1)))
-        # x = F.relu(self.lin2(x))
-        x = F.sigmoid(self.lin3(node_embed))
+        x = self.conv1(x, adj, self.device)
+        x = F.relu(F.dropout(x, p=self.p1))
+        x = self.conv2(x, adj, self.device)
+        node_embed = F.relu(F.dropout(x, p=self.p2))
+        x = F.sigmoid(self.lin(node_embed))
         return x, node_embed, adj
 
 
@@ -171,8 +169,8 @@ class DiffusionModel(torch.nn.Module):
         # self.norm2 = nn.BatchNorm1d(self.h2)
 
         self.lin = nn.Linear(hidden2, 1)
-        self.relu1 = nn.LeakyReLU(0.1)
-        self.relu2 = nn.LeakyReLU(0.1)
+        # self.relu1 = nn.LeakyReLU(0.1)
+        # self.relu2 = nn.LeakyReLU(0.1)
         # self.lin2 = nn.Linear(hidden2, 1)
 
         self.p1 = dropout1
@@ -192,14 +190,15 @@ class DiffusionModel(torch.nn.Module):
             adj = torch.FloatTensor(block_diag(*[i[0] for i in data.adj]))
     
         # coded in the dataset generation process, adj with self loop adj[i,i] = 0
-        adj = F.sigmoid(adj)
-        adj[torch.isnan(adj)] = 0
+        # adj = F.sigmoid(adj)
+        # adj[torch.isnan(adj)] = 0
+        adj = adj / adj.sum(1)
         adj = adj.to(self.device)
 
         x = self.conv1(x, adj, self.device).squeeze()
-        x = self.relu1(F.dropout(x, p=self.p1))
+        x = F.relu(F.dropout(x, p=self.p1))
         x = self.conv2(x, adj, self.device).squeeze()
-        node_embed = self.relu2(F.dropout(x, p=self.p2))
+        node_embed = F.relu(F.dropout(x, p=self.p2))
         output = F.sigmoid(self.lin(node_embed))
 
         return output, node_embed, adj
