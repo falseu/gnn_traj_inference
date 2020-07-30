@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import kneighbors_graph
-from utils import technological_noise, calculate_adj, process_adata
+from utils import technological_noise, calculate_adj, process_adata, process_adata_novelo
 
 class SymsimBifur(InMemoryDataset):
 
@@ -456,5 +456,80 @@ class dyngenBifur(InMemoryDataset):
         torch.save((data, slices), self.processed_paths[0])       
     def __repr__(self):
         return '{}()'.format(self.__class__.__name__)
+
+
+class SymsimNoVeloTree(InMemoryDataset):
+
+    def __init__(self, root='data/', transform=None, pre_transform=None):
+        super(SymsimNoVeloTree, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        return []
+
+    @property
+    def processed_file_names(self):
+        return ['SymsimNoVeloTree.dataset']
+
+    def download(self):
+        pass
+
+    def process(self):
+        root = "data/symsim_novelo/"
+        tree_files = ['Sigma0.1_tree3nodes/rand'+str(i)+'/' for i in range(1,51)]
+        data_list = []
+
+        for file_name in tree_files:
+            X = pd.read_csv(root + file_name + "counts.txt", sep="\t",header=None).to_numpy().T
+            true_time = pd.read_csv(root + file_name + "cell_labels.txt", sep = "\t",lineterminator="\n", header = 0).to_numpy()[:,1]
+            X_obs = pd.DataFrame(data=true_time, index = ['cell_' + str(x) for x in range(X.shape[0])], columns = ['sim_time'])
+
+            adata = anndata.AnnData(X = csr_matrix(X), obs = X_obs)
+            data = process_adata_novelo(adata)
+            data_list.append(data)
+
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])       
+    def __repr__(self):
+        return '{}()'.format(self.__class__.__name__)
+
+class SymsimOldNoVeloTree(InMemoryDataset):
+
+    def __init__(self, root='data/', transform=None, pre_transform=None):
+        super(SymsimOldNoVeloTree, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        return []
+
+    @property
+    def processed_file_names(self):
+        return ['SymsimOldNoVeloTree.dataset']
+
+    def download(self):
+        pass
+
+    def process(self):
+        root = "data/symsim_novelo/"
+        tree_files = ['Sigma0.2/rand'+str(i)+'/' for i in range(1,11)] + ['Sigma0.3/rand'+str(i)+'/' for i in range(1,11)]
+        data_list = []
+
+        for file_name in tree_files:
+            X = pd.read_csv(root + file_name + "counts.txt", sep="\t").to_numpy().T
+            true_time = pd.read_csv(root + file_name + "cell_labels.txt", sep = "\t",lineterminator="\n", header=None).to_numpy()[:,1]
+            X_obs = pd.DataFrame(data=true_time, index = ['cell_' + str(x) for x in range(X.shape[0])], columns = ['sim_time'])
+
+            adata = anndata.AnnData(X = csr_matrix(X), obs = X_obs)
+            data = process_adata_novelo(adata)
+            data_list.append(data)
+
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])       
+    def __repr__(self):
+        return '{}()'.format(self.__class__.__name__)
+
+
 
 

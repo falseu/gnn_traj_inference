@@ -71,6 +71,48 @@ def process_adata(adata, noise=0.0):
     print(x.shape)
     return data
 
+def process_adata_novelo(adata, noise=0.0):
+    sc.pp.filter_genes(adata, min_counts = 0)
+    sc.pp.normalize_per_cell(adata)
+    sc.pp.filter_genes_dispersion(adata, n_top_genes= 300)
+    sc.pp.log1p(adata)
+    if adata.n_vars > 299:
+        adata = adata[:,:299]
+    elif adata.n_vars < 299:
+        raise ValueError("Feature number", adata.n_vars)
+
+    print(adata.X.shape)
+
+    X_spliced = adata.X.toarray()
+
+    pipeline = Pipeline([('pca', PCA(n_components=30, svd_solver='arpack'))])
+    X_pca = pipeline.fit_transform(X_spliced)
+
+    conn, G = nearest_neighbor(X_pca, k=10, sigma=3)
+
+    # X_spliced is original, X_pca is after pca
+    x = X_spliced.copy()
+    x = StandardScaler().fit_transform(x)
+    x = torch.FloatTensor(x)
+
+    # Simulation time label
+    y = adata.obs['sim_time'].to_numpy().reshape((-1, 1))
+    scaler = MinMaxScaler((0, 1))
+    scaler.fit(y)
+    y = torch.FloatTensor(scaler.transform(y).reshape(-1, 1))
+
+    # Graph type label
+    # y = torch.LongTensor(np.where(np.array(backbones) == bb)[0])
+
+    edge_index = np.array(np.nonzero(conn))
+    edge_index = torch.LongTensor(edge_index)
+
+    adj = conn.copy()
+
+    data = Data(x=x, edge_index=edge_index, y=y, adj=adj, noise=noise)
+    print(x.shape)
+    return data
+
 def technological_noise(count_mt, capture_rate = 0.2):
     
     X = count_mt.astype('int')
