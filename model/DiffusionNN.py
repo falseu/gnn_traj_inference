@@ -60,7 +60,7 @@ class GraphDiffusion(Module):
             transitions = [trans]
 
         for idx, trans in enumerate(transitions):
-            # state1 (num_nodes, input_size * batch_size)
+            # state1 (num_nodes, input_size * batch_size)   
             state1 = torch.mm(trans, state0)
             states = torch.cat((states, state1.reshape(1, num_nodes, -1)),dim = 0)
 
